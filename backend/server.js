@@ -9,7 +9,21 @@ const rateLimit = require('express-rate-limit');
 // Import configurations
 const logger = require('./config/logger');
 const { query: dbQuery } = require('./config/database');
-const { cache: redisCache } = require('./config/redis');
+
+// Import Redis cache with fallback
+let redisCache = null;
+try {
+  const { cache } = require('./config/redis');
+  redisCache = cache;
+} catch (error) {
+  logger.warn('Redis not available, continuing without cache', { error: error.message });
+  redisCache = {
+    set: () => Promise.resolve(),
+    get: () => Promise.resolve(null),
+    delete: () => Promise.resolve(),
+    clear: () => Promise.resolve()
+  };
+}
 
 // Import database migrator
 const databaseMigrator = require('./database/migrator');

@@ -1,7 +1,20 @@
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
-const { redis, cache } = require('../config/redis');
 const logger = require('../config/logger');
+
+// Import Redis cache with fallback
+let cache = null;
+try {
+  const redisModule = require('../config/redis');
+  cache = redisModule.cache;
+} catch (error) {
+  logger.warn('Redis not available, using fallback cache', { error: error.message });
+  cache = {
+    set: () => Promise.resolve(),
+    get: () => Promise.resolve(null),
+    delete: () => Promise.resolve()
+  };
+}
 
 class AuthMiddleware {
   constructor() {
