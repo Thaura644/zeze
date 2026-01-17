@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.90.1",
+    "axios": "^1.4.0",
     "aws-sdk": "^2.1365.0",
     "bcryptjs": "^2.4.3",
     "bull": "^4.10.4",
