@@ -16,7 +16,7 @@ RUN apk add --no-cache \
     && rm -rf /var/cache/apk/*
 
 # Install Python packages for audio processing
-RUN pip3 install --no-cache-dir \
+RUN pip3 install --no-cache-dir --break-system-packages \
     numpy \
     scipy \
     librosa \
