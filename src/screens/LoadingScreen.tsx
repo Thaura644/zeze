@@ -1,13 +1,17 @@
 import React from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, StatusBar } from 'react-native';
 import { COLORS, SPACING, TYPOGRAPHY } from '@/constants/theme';
+import GuitarLogo from '@/components/GuitarLogo';
 
 const LoadingScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       <View style={styles.logoContainer}>
-        <Text style={styles.text}>🎸 ZEZE</Text>
+        <View style={styles.logoRow}>
+          <GuitarLogo size={64} />
+          <Text style={styles.text}>ZEZE</Text>
+        </View>
         <Text style={styles.subtitle}>Analyzing the strings of your favorite songs...</Text>
       </View>
       <View style={styles.loaderContainer}>
@@ -23,16 +27,22 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.background, // Deep black (#121212)
     paddingVertical: SPACING.xxl * 2,
+    minHeight: '100%',
   },
   logoContainer: {
     alignItems: 'center',
   },
+  logoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
   text: {
     ...TYPOGRAPHY.h1,
     color: COLORS.primary,
-    marginBottom: SPACING.md,
+    marginLeft: SPACING.sm,
   },
   subtitle: {
     ...TYPOGRAPHY.body,

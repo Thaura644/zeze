@@ -14,6 +14,7 @@ import {
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
+import GuitarLogo from '@/components/GuitarLogo';
 import { Provider, useDispatch } from 'react-redux';
 import Toast from 'react-native-toast-message';
 
@@ -128,7 +129,7 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.loginContent}>
             <View style={styles.header}>
-              <Text style={styles.logo}>🎸</Text>
+              <GuitarLogo size={64} style={styles.logo} />
               <Text style={styles.title}>ZEZE</Text>
               <Text style={styles.subtitle}>
                 {isRegistering ? 'Create your account' : 'Your AI-powered guitar tutor'}
@@ -332,9 +333,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+    minHeight: '100%',
   },
   scrollContent: {
     flexGrow: 1,
+    justifyContent: 'center',
   },
   centered: {
     justifyContent: 'center',
@@ -342,19 +345,20 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
+    backgroundColor: COLORS.background,
   },
   loginContent: {
     flex: 1,
     justifyContent: 'center',
     paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.xxl,
+    minHeight: '100%',
   },
   header: {
     alignItems: 'center',
     marginBottom: SPACING.xxl,
   },
   logo: {
-    fontSize: 48,
     marginBottom: SPACING.sm,
   },
   title: {
