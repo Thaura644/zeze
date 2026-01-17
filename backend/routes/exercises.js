@@ -5,20 +5,35 @@ const auth = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
 
 // Generate a new guitar exercise
-router.post('/generate-exercise', auth, [
-  body('skillLevel').isIn(['beginner', 'intermediate', 'advanced']).withMessage('Invalid skill level'),
-  body('style').isIn(['rock', 'blues', 'jazz', 'folk', 'classical']).withMessage('Invalid style'),
-  body('tempo').isInt({ min: 40, max: 200 }).withMessage('Tempo must be between 40 and 200'),
-  body('duration').isInt({ min: 10, max: 120 }).withMessage('Duration must be between 10 and 120 seconds'),
-  body('key').isIn(['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']).withMessage('Invalid key'),
-  body('exerciseType').isIn(['melody', 'chord', 'scale', 'riff']).withMessage('Invalid exercise type')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+router.post('/generate-exercise', auth, async (req, res) => {
+  // Validate input
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
 
+  // Manual validation since express-validator array is causing issues
+  const { skillLevel, style, tempo, duration, key, exerciseType } = req.body;
+  
+  if (!['beginner', 'intermediate', 'advanced'].includes(skillLevel)) {
+    return res.status(400).json({ error: 'Invalid skill level' });
+  }
+  if (!['rock', 'blues', 'jazz', 'folk', 'classical'].includes(style)) {
+    return res.status(400).json({ error: 'Invalid style' });
+  }
+  if (!Number.isInteger(tempo) || tempo < 40 || tempo > 200) {
+    return res.status(400).json({ error: 'Tempo must be between 40 and 200' });
+  }
+  if (!Number.isInteger(duration) || duration < 10 || duration > 120) {
+    return res.status(400).json({ error: 'Duration must be between 10 and 120 seconds' });
+  }
+  if (!['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'].includes(key)) {
+    return res.status(400).json({ error: 'Invalid key' });
+  }
+  if (!['melody', 'chord', 'scale', 'riff'].includes(exerciseType)) {
+    return res.status(400).json({ error: 'Invalid exercise type' });
+  }
+  try {
     const exercise = await audioGenerationService.generateGuitarExercise(req.body);
     
     res.json({
@@ -92,18 +107,19 @@ router.get('/audio/:exerciseId/:speed', async (req, res) => {
 });
 
 // Generate exercise variation
-router.post('/generate-variation/:exerciseId', auth, [
-  body('variationType').isIn(['tempo', 'key', 'style', 'complexity']).withMessage('Invalid variation type'),
-  body('value').notEmpty().withMessage('Variation value is required')
-], async (req, res) => {
+router.post('/generate-variation/:exerciseId', auth, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+    // Manual validation
+    const { variationType, value } = req.body;
+    
+    if (!['tempo', 'key', 'style', 'complexity'].includes(variationType)) {
+      return res.status(400).json({ error: 'Invalid variation type' });
+    }
+    if (!value) {
+      return res.status(400).json({ error: 'Variation value is required' });
     }
 
     const { exerciseId } = req.params;
-    const { variationType, value } = req.body;
     
     // This would retrieve the original exercise and create a variation
     // For now, we'll simulate this
