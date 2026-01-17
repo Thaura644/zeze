@@ -22,6 +22,7 @@ import HomeScreen from '@/screens/HomeScreen';
 import PlayerScreen from '@/screens/PlayerScreen';
 import LoadingScreen from '@/screens/LoadingScreen';
 import ProfileScreen from '@/screens/ProfileScreen';
+import LearningView from '@/screens/LearningView';
 import ApiService from '@/services/api';
 import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS, SHADOWS } from '@/constants/theme';
 
@@ -263,6 +264,11 @@ const AuthenticatedApp = () => {
         name="Profile"
         component={ProfileScreen}
         options={{ title: 'User Profile', headerShown: true }}
+      />
+      <Stack.Screen
+        name="Learning"
+        component={LearningView}
+        options={{ title: 'Learn Guitar', headerShown: false }}
       />
     </Stack.Navigator>
   );

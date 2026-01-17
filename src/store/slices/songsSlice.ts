@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { Song } from '@/types/music';
 import ApiService from '@/services/api';
+import SongCacheService from '@/services/songCache';
 
 interface SongsState {
   songs: Song[];
@@ -119,6 +120,22 @@ export const fetchJobStatus = createAsyncThunk(
   }
 );
 
+export const loadSongFromCache = createAsyncThunk(
+  'songs/loadSongFromCache',
+  async (songId: string, { rejectWithValue }) => {
+    try {
+      const cachedData = await SongCacheService.getCachedSong(songId);
+      if (cachedData) {
+        return cachedData;
+      } else {
+        return rejectWithValue('Song not in cache');
+      }
+    } catch (error: any) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
 const songsSlice = createSlice({
   name: 'songs',
   initialState,
@@ -179,6 +196,9 @@ const songsSlice = createSlice({
             processedAt: new Date().toISOString(),
           };
 
+          // Cache the song data for faster future loads
+          SongCacheService.cacheSong(newSong.id, result);
+
           // Only add if not already in list
           if (!state.songs.find(s => s.id === newSong.id)) {
             state.songs.push(newSong);
@@ -221,6 +241,9 @@ const songsSlice = createSlice({
             processedAt: new Date().toISOString(),
           };
 
+          // Cache the song data for faster future loads
+          SongCacheService.cacheSong(newSong.id, result);
+
           if (!state.songs.find(s => s.id === newSong.id)) {
             state.songs.push(newSong);
           }
@@ -237,6 +260,10 @@ const songsSlice = createSlice({
           state.processingStatus = data.status as any;
           state.processingProgress = data.progress_percentage;
         }
+      })
+      .addCase(loadSongFromCache.fulfilled, (state, action) => {
+        // Handle cached song loading if needed
+        console.log('Song loaded from cache:', action.payload);
       });
   },
 });

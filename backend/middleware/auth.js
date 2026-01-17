@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
-const { cache } = require('./redis');
-const logger = require('./logger');
+const redisClient = require('../config/redis');
+const logger = require('../config/logger');
 
 class AuthMiddleware {
   constructor() {

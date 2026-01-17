@@ -42,6 +42,14 @@ ZEZE is a mobile application that teaches all guitar techniques and transpositio
 - **Real-time Processing**: Background job queuing with progress tracking
 - **Error Handling**: Comprehensive validation and user feedback
 
+### Learning & Progress System
+- **Structured Learning Path**: 7 major categories with 50+ skills from beginner to advanced
+- **Skill Categories**: Getting Started, Chords & Transitions, Rhythm & Timing, Music Theory, Soloing & Lead Guitar, Technique Mastery, Song Learning
+- **In-App Learning**: Direct navigation from song playback to skill tutorials
+- **Progress Tracking**: Prerequisites and difficulty levels for guided learning
+- **Song-Based Learning**: Skills dropdown shows techniques needed for current song
+- **Caching System**: Local song data caching for instant replay (24-hour expiry)
+
 ---
 
 ## Technical Architecture
@@ -2367,13 +2375,16 @@ Hardware Partners:
 ### ✅ Completed Features
 - **Backend API**: Full REST API with authentication, audio processing, and database integration
 - **YouTube Processing**: Complete YouTube URL processing with metadata extraction
-- **Local Audio Upload**: Production-ready local file upload with format validation
+- **Local Audio Upload**: Production-ready local file upload with format validation and progress tracking
 - **Real-time Processing**: Background job queuing with WebSocket progress updates
 - **Frontend UI**: Complete React Native app with navigation, state management, and UI components
 - **Database Schema**: Comprehensive PostgreSQL schema with TimescaleDB for time-series data
 - **Authentication**: JWT-based authentication with secure password handling
 - **File Storage**: AWS S3 integration for audio file storage
 - **Monitoring**: Prometheus/Grafana setup for system monitoring
+- **Learning Roadmap**: Comprehensive guitar learning path with 50+ skills across 7 categories
+- **Skill Navigation**: In-app skill learning with dropdown access from Player screen
+- **Song Caching**: Local caching for faster song replay and offline access
 
 ### 🔄 Production Ready
 - All core functionality implemented and tested

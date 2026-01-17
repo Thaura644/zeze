@@ -187,6 +187,7 @@ const validateRefreshToken = [
 
 module.exports = {
   router,
+  handleValidationErrors,
   validateYouTubeProcessing,
   validateJobStatus,
   validateSongResults,
