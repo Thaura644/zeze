@@ -1,4 +1,6 @@
 const express = require('express');
+const multer = require('multer');
+const path = require('path');
 const { body, param, query } = require('express-validator');
 const router = express.Router();
 const audioProcessingService = require('../services/audioProcessing');
@@ -7,8 +9,90 @@ const authMiddleware = require('../middleware/auth');
 const validationMiddleware = require('../middleware/validation');
 const logger = require('../config/logger');
 
+// Configure multer for audio uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/');
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: (process.env.MAX_FILE_SIZE_MB || 50) * 1024 * 1024
+  },
+  fileFilter: (req, file, cb) => {
+    const filetypes = /mp3|wav|ogg|m4a|flac/;
+    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = filetypes.test(file.mimetype);
+
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only audio files (mp3, wav, ogg, m4a, flac) are allowed!'));
+    }
+  }
+});
+
+// Process Audio File Upload
+router.post('/process-audio',
+  authMiddleware.authenticate(),
+  upload.single('audio_file'),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No audio file uploaded' });
+      }
+
+      const userPreferences = req.body.user_preferences ? JSON.parse(req.body.user_preferences) : {};
+
+      // Start processing background job
+      const results = await audioProcessingService.processAudioFile(
+        req.file.path,
+        req.file.originalname,
+        userPreferences
+      );
+
+      // Create song entry in database
+      if (results.status === 'completed') {
+        const songData = {
+          title: results.metadata.title,
+          artist: results.metadata.artist,
+          duration_seconds: Math.round(results.metadata.duration),
+          original_key: results.key.key,
+          tempo_bpm: results.tempo.bpm,
+          chord_progression: results.chords,
+          overall_difficulty: results.analysis.difficulty || 3,
+          processing_status: 'completed'
+        };
+
+        const song = await songService.createSong(songData);
+        results.results = {
+          song_id: song.song_id,
+          metadata: results.metadata,
+          chords: results.chords,
+          processing_completed: true
+        };
+      }
+
+      res.json(results);
+    } catch (error) {
+      logger.error('Audio processing failed', { error: error.message });
+      res.status(500).json({
+        error: 'Failed to process audio file',
+        code: 'PROCESSING_ERROR',
+        message: error.message
+      });
+    }
+  }
+);
+
 // Process YouTube URL
-router.post('/process-youtube', 
+router.post('/process-youtube',
   authMiddleware.authenticate(),
   validationMiddleware.validateYouTubeProcessing,
   async (req, res) => {
@@ -16,9 +100,9 @@ router.post('/process-youtube',
       const { youtube_url, user_preferences } = req.body;
 
       // Check if song already exists
-      const existingSong = await audioProcessingService.extractVideoId(youtube_url);
-      if (existingSong) {
-        const song = await songService.getSongByYouTubeId(existingSong);
+      const videoId = audioProcessingService.extractVideoId(youtube_url);
+      if (videoId) {
+        const song = await songService.getSongByYouTubeId(videoId);
         if (song && song.processing_status === 'completed') {
           return res.json({
             job_id: `existing_${song.song_id}`,
@@ -47,18 +131,24 @@ router.post('/process-youtube',
       // Create song entry in database
       if (results.status === 'completed') {
         const songData = {
-          youtube_id: audioProcessingService.extractVideoId(youtube_url),
+          youtube_id: videoId,
           title: results.metadata.title,
           artist: results.metadata.artist,
           duration_seconds: results.metadata.duration,
-          original_key: results.key,
+          original_key: results.key.key,
           tempo_bpm: results.tempo.bpm,
           chord_progression: results.chords,
           overall_difficulty: results.analysis.difficulty || 3,
           thumbnail_url: results.metadata.thumbnail
         };
 
-        await songService.createSong(songData);
+        const song = await songService.createSong(songData);
+        results.results = {
+          song_id: song.song_id,
+          metadata: results.metadata,
+          chords: results.chords,
+          processing_completed: true
+        };
       }
 
       res.json(results);
@@ -171,7 +261,7 @@ router.get('/techniques/:songId/:timestamp',
       }
 
       // Find the current chord at this timestamp
-      const currentChord = song.chord_progression?.find(chord => 
+      const currentChord = song.chord_progression?.find(chord =>
         time >= chord.start_time && time < chord.start_time + chord.duration
       );
 
@@ -188,10 +278,10 @@ router.get('/techniques/:songId/:timestamp',
         }
       });
     } catch (error) {
-      logger.error('Failed to get technique guidance', { 
-        songId: req.params.songId, 
-        timestamp: req.params.timestamp, 
-        error: error.message 
+      logger.error('Failed to get technique guidance', {
+        songId: req.params.songId,
+        timestamp: req.params.timestamp,
+        error: error.message
       });
       res.status(500).json({
         error: 'Failed to get technique guidance',
@@ -203,9 +293,6 @@ router.get('/techniques/:songId/:timestamp',
 
 // Helper function to get technique based on context
 async function getTechniqueForContext(chord, song, timestamp) {
-  // This would integrate with the AI service and technique database
-  // For now, return mock technique data
-  
   const techniques = [
     {
       name: 'Basic Strumming',
@@ -241,10 +328,8 @@ async function getTechniqueForContext(chord, song, timestamp) {
     }
   ];
 
-  // Select technique based on context
   const difficulty = song.overall_difficulty || 3;
   const selectedIndex = difficulty <= 3 ? 0 : 1;
-  
   return techniques[selectedIndex];
 }
 

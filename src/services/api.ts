@@ -1,4 +1,5 @@
 import axios, { AxiosResponse, AxiosError } from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001/api';
 
@@ -56,6 +57,7 @@ export interface ProcessedResults {
       original_key: string;
       tempo_bpm: number;
       overall_difficulty: number;
+      video_url?: string;
     };
     chords: Chord[];
     tablature: Tablature;
@@ -152,17 +154,14 @@ class ApiService {
 
     // Request interceptor for adding auth token
     this.api.interceptors.request.use(
-      (config: any) => {
-        const token = this.getStoredToken();
-        if (token) {
-          config.headers = {
-            ...config.headers,
-            Authorization: `Bearer ${token}`,
-          };
+      async (config: any) => {
+        const { accessToken } = await this.getStoredTokens();
+        if (accessToken) {
+          config.headers.Authorization = `Bearer ${accessToken}`;
         }
         return config;
       },
-      (error: any) => {
+      (error: AxiosError) => {
         return Promise.reject(error);
       }
     );
@@ -172,46 +171,16 @@ class ApiService {
       (response: AxiosResponse) => {
         return response;
       },
-      (error: AxiosError) => {
-        this.handleApiError(error);
+      async (error: AxiosError) => {
+        await this.handleApiError(error);
         return Promise.reject(error);
       }
     );
   }
 
-  private getStoredToken(): string | null {
-    try {
-      // In a real app, this would use AsyncStorage or secure storage
-      return localStorage.getItem('accessToken');
-    } catch (error) {
-      console.warn('Failed to get stored token:', error);
-      return null;
-    }
-  }
-
-  private setStoredTokens(accessToken: string, refreshToken: string): void {
-    try {
-      localStorage.setItem('accessToken', accessToken);
-      localStorage.setItem('refreshToken', refreshToken);
-    } catch (error) {
-      console.warn('Failed to store tokens:', error);
-    }
-  }
-
-  private clearStoredTokens(): void {
-    try {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-    } catch (error) {
-      console.warn('Failed to clear tokens:', error);
-    }
-  }
-
-  private handleApiError(error: AxiosError): void {
+  private async handleApiError(error: AxiosError): Promise<void> {
     if (error.response?.status === 401) {
-      // Token expired or invalid, clear tokens and redirect to login
-      this.clearStoredTokens();
-      // In a real app, you would navigate to login screen
+      await this.clearStoredTokens();
       console.warn('Authentication error - tokens cleared');
     }
   }
@@ -225,14 +194,14 @@ class ApiService {
   }): Promise<ApiResponse<LoginResponse>> {
     try {
       const response = await this.api.post('/users/register', userData);
-      
+
       if (response.data?.tokens) {
-        this.setStoredTokens(
+        await this.setStoredTokens(
           response.data.tokens.accessToken,
           response.data.tokens.refreshToken
         );
       }
-      
+
       return response.data;
     } catch (error: any) {
       console.error('Registration error:', error);
@@ -246,14 +215,14 @@ class ApiService {
         email,
         password,
       });
-      
+
       if (response.data?.tokens) {
-        this.setStoredTokens(
+        await this.setStoredTokens(
           response.data.tokens.accessToken,
           response.data.tokens.refreshToken
         );
       }
-      
+
       return response.data;
     } catch (error: any) {
       console.error('Login error:', error);
@@ -261,10 +230,26 @@ class ApiService {
     }
   }
 
+  async setStoredTokens(accessToken: string, refreshToken: string): Promise<void> {
+    await AsyncStorage.setItem('accessToken', accessToken);
+    await AsyncStorage.setItem('refreshToken', refreshToken);
+  }
+
+  async getStoredTokens(): Promise<{ accessToken: string | null; refreshToken: string | null }> {
+    const accessToken = await AsyncStorage.getItem('accessToken');
+    const refreshToken = await AsyncStorage.getItem('refreshToken');
+    return { accessToken, refreshToken };
+  }
+
+  async clearStoredTokens(): Promise<void> {
+    await AsyncStorage.removeItem('accessToken');
+    await AsyncStorage.removeItem('refreshToken');
+  }
+
   async logout(): Promise<ApiResponse<any>> {
     try {
       const response = await this.api.post('/users/logout', {});
-      this.clearStoredTokens();
+      await this.clearStoredTokens();
       return response.data;
     } catch (error: any) {
       console.error('Logout error:', error);
@@ -274,7 +259,7 @@ class ApiService {
 
   async refreshToken(): Promise<ApiResponse<LoginResponse>> {
     try {
-      const refreshToken = localStorage.getItem('refreshToken');
+      const refreshToken = await AsyncStorage.getItem('refreshToken');
       if (!refreshToken) {
         throw new Error('No refresh token available');
       }
@@ -282,14 +267,14 @@ class ApiService {
       const response = await this.api.post('/users/refresh', {
         refreshToken,
       });
-      
+
       if (response.data?.tokens) {
         this.setStoredTokens(
           response.data.tokens.accessToken,
           response.data.tokens.refreshToken
         );
       }
-      
+
       return response.data;
     } catch (error: any) {
       console.error('Token refresh error:', error);
@@ -318,10 +303,36 @@ class ApiService {
   }
 
   // Audio processing endpoints
+  async uploadAudio(
+    file: any,
+    userPreferences?: any
+  ): Promise<ApiResponse<{ job_id: string; status: string; results?: ProcessedResults['results'] }>> {
+    try {
+      const formData = new FormData();
+
+      // In React Native, the file object should look like { uri, name, type }
+      formData.append('audio_file', file);
+
+      if (userPreferences) {
+        formData.append('user_preferences', JSON.stringify(userPreferences));
+      }
+
+      const response = await this.api.post('/process-audio', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('Upload audio error:', error);
+      throw error;
+    }
+  }
+
   async processYouTubeUrl(
     youtubeUrl: string,
     userPreferences?: any
-  ): Promise<ApiResponse<{ job_id: string; status: string }>> {
+  ): Promise<ApiResponse<{ job_id: string; status: string; results?: ProcessedResults['results'] }>> {
     try {
       const response = await this.api.post('/process-youtube', {
         youtube_url: youtubeUrl,
@@ -518,11 +529,11 @@ class ApiService {
     try {
       const formData = new FormData();
       formData.append('session_id', sessionId);
-      
+
       if (audioFile) {
         formData.append('audio_file', audioFile);
       }
-      
+
       if (practiceNotes) {
         formData.append('practice_notes', practiceNotes);
       }
@@ -532,7 +543,7 @@ class ApiService {
           'Content-Type': 'multipart/form-data',
         },
       });
-      
+
       return response.data;
     } catch (error: any) {
       console.error('Submit practice analysis error:', error);

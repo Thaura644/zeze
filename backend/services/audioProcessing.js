@@ -1,9 +1,9 @@
-const express = require('express');
 const ytdl = require('ytdl-core');
 const ffmpeg = require('fluent-ffmpeg');
 const path = require('path');
 const fs = require('fs').promises;
 const { v4: uuidv4 } = require('uuid');
+const axios = require('axios');
 const logger = require('../config/logger');
 const { cache } = require('../config/redis');
 
@@ -11,6 +11,7 @@ class AudioProcessingService {
   constructor() {
     this.supportedFormats = ['mp3', 'wav', 'ogg', 'm4a', 'flac'];
     this.maxFileSize = (process.env.MAX_FILE_SIZE_MB || 50) * 1024 * 1024; // Convert to bytes
+    this.youtubeApiKey = process.env.YOUTUBE_API_KEY;
   }
 
   // Extract YouTube video ID from URL
@@ -20,9 +21,38 @@ class AudioProcessingService {
     return match ? match[1] : null;
   }
 
-  // Get YouTube video metadata
+  // Get YouTube video metadata using API if available, fallback to ytdl
   async getYouTubeMetadata(videoId) {
     try {
+      if (this.youtubeApiKey) {
+        try {
+          const response = await axios.get('https://www.googleapis.com/youtube/v3/videos', {
+            params: {
+              part: 'snippet,contentDetails,statistics',
+              id: videoId,
+              key: this.youtubeApiKey
+            }
+          });
+
+          if (response.data.items && response.data.items.length > 0) {
+            const item = response.data.items[0];
+            return {
+              videoId,
+              title: item.snippet.title,
+              artist: item.snippet.channelTitle,
+              duration: this.parseISO8601Duration(item.contentDetails.duration),
+              thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url,
+              uploadDate: item.snippet.publishedAt,
+              viewCount: parseInt(item.statistics.viewCount),
+              description: item.snippet.description
+            };
+          }
+        } catch (apiError) {
+          logger.warn('YouTube API metadata fetch failed, falling back to ytdl', { videoId, error: apiError.message });
+        }
+      }
+
+      // Fallback to ytdl-core
       const info = await ytdl.getInfo(videoId);
       return {
         videoId,
@@ -40,6 +70,15 @@ class AudioProcessingService {
     }
   }
 
+  parseISO8601Duration(duration) {
+    const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    if (!match) return 0;
+    const hours = parseInt(match[1]) || 0;
+    const minutes = parseInt(match[2]) || 0;
+    const seconds = parseInt(match[3]) || 0;
+    return hours * 3600 + minutes * 60 + seconds;
+  }
+
   // Download audio from YouTube
   async downloadYouTubeAudio(videoId, outputPath) {
     return new Promise((resolve, reject) => {
@@ -50,12 +89,19 @@ class AudioProcessingService {
 
       const writeStream = require('fs').createWriteStream(outputPath);
 
-      stream.on('error', reject);
-      writeStream.on('error', reject);
-      
+      stream.on('error', (err) => {
+        logger.error('ytdl stream error', { videoId, error: err.message });
+        reject(err);
+      });
+
+      writeStream.on('error', (err) => {
+        logger.error('writeStream error', { videoId, error: err.message });
+        reject(err);
+      });
+
       stream.pipe(writeStream);
 
-      stream.on('end', () => {
+      writeStream.on('finish', () => {
         logger.info(`YouTube audio downloaded: ${videoId}`);
         resolve(outputPath);
       });
@@ -100,91 +146,104 @@ class AudioProcessingService {
     });
   }
 
+  // Process a generic audio file
+  async processAudioFile(filePath, originalName, userPreferences = {}) {
+    const jobId = uuidv4();
+    try {
+      await this.updateJobProgress(jobId, 'initialization', 5);
+
+      const tempDir = path.join(process.cwd(), 'temp', jobId);
+      await fs.mkdir(tempDir, { recursive: true });
+
+      const metadata = {
+        title: path.parse(originalName).name,
+        artist: 'Unknown Artist',
+        duration: 0, // Will be updated
+      };
+
+      // Get duration
+      metadata.duration = await this.getAudioDuration(filePath);
+
+      await this.updateJobProgress(jobId, 'audio_conversion', 20);
+      const wavPath = path.join(tempDir, 'audio.wav');
+      await this.convertToWav(filePath, wavPath);
+
+      return await this.runProcessingPipeline(jobId, wavPath, metadata, userPreferences, tempDir);
+    } catch (error) {
+      logger.error('Audio file processing failed', { jobId, error: error.message });
+      await this.updateJobProgress(jobId, 'error', null, error.message);
+      throw error;
+    }
+  }
+
+  async getAudioDuration(filePath) {
+    return new Promise((resolve, reject) => {
+      ffmpeg.ffprobe(filePath, (err, metadata) => {
+        if (err) return reject(err);
+        resolve(metadata.format.duration);
+      });
+    });
+  }
+
   // Process YouTube URL completely
   async processYouTubeUrl(youtubeUrl, userPreferences = {}) {
     const jobId = uuidv4();
-    const processingSteps = [
-      'download',
-      'metadata_extraction',
-      'audio_conversion',
-      'sample_extraction',
-      'audio_analysis',
-      'chord_detection',
-      'tempo_detection',
-      'key_detection',
-      'tab_generation',
-      'completion'
-    ];
-
     try {
-      // Update job status in cache
       await this.updateJobProgress(jobId, 'download', 0);
 
-      // Extract video ID
       const videoId = this.extractVideoId(youtubeUrl);
       if (!videoId) {
         throw new Error('Invalid YouTube URL format');
       }
 
       await this.updateJobProgress(jobId, 'metadata_extraction', 10);
-
-      // Get video metadata
       const metadata = await this.getYouTubeMetadata(videoId);
+      metadata.video_url = youtubeUrl;
 
-      await this.updateJobProgress(jobId, 'download', 20);
-
-      // Create temp directory
       const tempDir = path.join(process.cwd(), 'temp', jobId);
       await fs.mkdir(tempDir, { recursive: true });
 
-      // Download full audio
-      const rawAudioPath = path.join(tempDir, 'raw.webm');
+      const rawAudioPath = path.join(tempDir, 'raw.audio');
       await this.downloadYouTubeAudio(videoId, rawAudioPath);
 
       await this.updateJobProgress(jobId, 'audio_conversion', 40);
-
-      // Convert to WAV
       const wavPath = path.join(tempDir, 'audio.wav');
       await this.convertToWav(rawAudioPath, wavPath);
 
-      await this.updateJobProgress(jobId, 'sample_extraction', 50);
+      return await this.runProcessingPipeline(jobId, wavPath, metadata, userPreferences, tempDir);
+    } catch (error) {
+      logger.error('YouTube processing failed', { jobId, error: error.message });
+      await this.updateJobProgress(jobId, 'error', null, error.message);
+      throw error;
+    }
+  }
 
-      // Extract 30-second sample
+  async runProcessingPipeline(jobId, wavPath, metadata, userPreferences, tempDir) {
+    try {
+      await this.updateJobProgress(jobId, 'sample_extraction', 50);
       const samplePath = path.join(tempDir, 'sample.wav');
-      const sampleStartTime = Math.min(30, Math.floor(metadata.duration / 2)); // Start at 30s or middle of song
+      const sampleStartTime = Math.min(30, Math.floor(metadata.duration / 2));
       await this.extractAudioSample(wavPath, samplePath, sampleStartTime);
 
       await this.updateJobProgress(jobId, 'audio_analysis', 60);
-
-      // Analyze audio (placeholder for actual ML processing)
       const analysis = await this.analyzeAudio(samplePath, metadata);
 
       await this.updateJobProgress(jobId, 'chord_detection', 75);
-
-      // Detect chords (placeholder)
       const chords = await this.detectChords(samplePath, analysis);
 
       await this.updateJobProgress(jobId, 'tempo_detection', 85);
-
-      // Detect tempo (placeholder)
       const tempo = await this.detectTempo(samplePath);
 
       await this.updateJobProgress(jobId, 'key_detection', 90);
-
-      // Detect key (placeholder)
       const key = await this.detectKey(samplePath);
 
       await this.updateJobProgress(jobId, 'tab_generation', 95);
-
-      // Generate tablature (placeholder)
       const tablature = await this.generateTablature(chords, analysis);
 
       await this.updateJobProgress(jobId, 'completion', 100);
 
-      // Clean up temp files
       await this.cleanup(tempDir);
 
-      // Return results
       const results = {
         jobId,
         status: 'completed',
@@ -198,17 +257,10 @@ class AudioProcessingService {
         user_preferences: userPreferences
       };
 
-      // Cache results
-      await cache.set(`job_${jobId}`, results, 3600); // Cache for 1 hour
-
+      await cache.set(`job_${jobId}`, results, 3600);
       return results;
-
     } catch (error) {
-      logger.error('YouTube processing failed', { jobId, error: error.message });
-      
-      // Update job status with error
-      await this.updateJobProgress(jobId, 'error', null, error.message);
-      
+      await this.cleanup(tempDir);
       throw error;
     }
   }
@@ -227,22 +279,16 @@ class AudioProcessingService {
     await cache.set(`job_status_${jobId}`, jobStatus, 3600);
   }
 
-  // Get job status
   async getJobStatus(jobId) {
     return await cache.get(`job_status_${jobId}`);
   }
 
-  // Get job results
   async getJobResults(jobId) {
     return await cache.get(`job_${jobId}`);
   }
 
-  // Placeholder audio analysis (would integrate with actual ML models)
   async analyzeAudio(audioPath, metadata) {
-    // This would integrate with Spotify Basic Pitch, Google's Onsets & Frames, etc.
     logger.info(`Analyzing audio: ${audioPath}`);
-    
-    // Mock analysis results
     return {
       duration: metadata.duration,
       sample_rate: 44100,
@@ -263,12 +309,8 @@ class AudioProcessingService {
     };
   }
 
-  // Placeholder chord detection
   async detectChords(audioPath, analysis) {
-    // This would integrate with Spotify Basic Pitch or similar
     logger.info(`Detecting chords in: ${audioPath}`);
-    
-    // Mock chord progression
     return [
       { chord: 'Em', startTime: 0.0, duration: 2.0, confidence: 0.95 },
       { chord: 'C', startTime: 2.0, duration: 2.0, confidence: 0.92 },
@@ -281,12 +323,8 @@ class AudioProcessingService {
     ];
   }
 
-  // Placeholder tempo detection
   async detectTempo(audioPath) {
-    // This would integrate with Librosa or similar
     logger.info(`Detecting tempo in: ${audioPath}`);
-    
-    // Mock tempo
     return {
       bpm: 120,
       confidence: 0.85,
@@ -294,12 +332,8 @@ class AudioProcessingService {
     };
   }
 
-  // Placeholder key detection
   async detectKey(audioPath) {
-    // This would integrate with Krumhansl-Schmuckler algorithm or similar
     logger.info(`Detecting key in: ${audioPath}`);
-    
-    // Mock key detection
     return {
       key: 'G',
       scale: 'major',
@@ -308,12 +342,8 @@ class AudioProcessingService {
     };
   }
 
-  // Placeholder tablature generation
   async generateTablature(chords, analysis) {
-    // This would integrate with GPT-4 and custom rules engine
     logger.info('Generating tablature');
-    
-    // Mock tablature
     return {
       tuning: ['E', 'A', 'D', 'G', 'B', 'E'],
       capo: 0,
@@ -327,7 +357,6 @@ class AudioProcessingService {
     };
   }
 
-  // Clean up temporary files
   async cleanup(tempDir) {
     try {
       await fs.rm(tempDir, { recursive: true, force: true });

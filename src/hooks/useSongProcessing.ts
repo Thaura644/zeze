@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Alert } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { AudioProcessingService, ProcessingRequest, ProcessingResponse } from '@/services/audioProcessing';
 import { Song } from '@/types/music';
 
@@ -44,7 +44,7 @@ export const useSongProcessing = (): UseSongProcessingReturn => {
   }, []);
 
   const processYouTubeUrl = useCallback(async (
-    url: string, 
+    url: string,
     preferences?: ProcessingRequest['userPreferences']
   ) => {
     try {
@@ -77,7 +77,7 @@ export const useSongProcessing = (): UseSongProcessingReturn => {
             fingerPositions: chord.fingerPositions,
           })),
           difficulty: response.results.difficulty,
-          processedAt: new Date(response.results.processed_at || Date.now()),
+          processedAt: new Date(response.results.processed_at || Date.now()).toISOString(),
         };
 
         updateState({
@@ -100,7 +100,11 @@ export const useSongProcessing = (): UseSongProcessingReturn => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to process song';
       updateState({ error: errorMessage, loading: false });
-      Alert.alert('Error', errorMessage);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: errorMessage,
+      });
     }
   }, [updateState]);
 
@@ -111,8 +115,8 @@ export const useSongProcessing = (): UseSongProcessingReturn => {
         (statusUpdate) => {
           updateState({
             progress: statusUpdate.progress_percentage,
-            currentStep: statusUpdate.current_step,
-          });
+            current_step: statusUpdate.current_step,
+          } as any);
         }
       );
 
@@ -132,7 +136,7 @@ export const useSongProcessing = (): UseSongProcessingReturn => {
           fingerPositions: chord.fingerPositions,
         })),
         difficulty: status.difficulty,
-        processedAt: new Date(),
+        processedAt: new Date().toISOString(),
       };
 
       updateState({
@@ -145,7 +149,11 @@ export const useSongProcessing = (): UseSongProcessingReturn => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Processing failed';
       updateState({ error: errorMessage, loading: false });
-      Alert.alert('Error', errorMessage);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: errorMessage,
+      });
     }
   }, [updateState]);
 
