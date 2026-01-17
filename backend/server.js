@@ -33,6 +33,7 @@ const audioProcessingRoutes = require('./routes/audioProcessing');
 const userRoutes = require('./routes/users');
 const practiceRoutes = require('./routes/practice');
 const songRoutes = require('./routes/songs');
+const exerciseRoutes = require('./routes/exercises');
 
 // Import WebSocket manager
 const websocketManager = require('./websocket/websocketManager');
@@ -192,6 +193,7 @@ app.use('/api', audioProcessingRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/practice', practiceRoutes);
 app.use('/api/songs', songRoutes);
+app.use('/api/exercises', exerciseRoutes);
 
 // API documentation endpoint
 app.get('/api', (req, res) => {
@@ -233,6 +235,14 @@ app.get('/api', (req, res) => {
         'POST /api/songs/:songId/save': 'Save song to library',
         'DELETE /api/songs/:songId/save': 'Remove song from library',
         'GET /api/songs/saved/list': 'Get user saved songs'
+      },
+      exercises: {
+        'POST /api/exercises/generate-exercise': 'Generate new guitar exercise',
+        'GET /api/exercises/audio/:exerciseId': 'Get exercise audio file',
+        'GET /api/exercises/audio/:exerciseId/:speed': 'Get exercise audio with speed control',
+        'POST /api/exercises/generate-variation/:exerciseId': 'Generate exercise variation',
+        'GET /api/exercises/library': 'Get exercise library',
+        'POST /api/exercises/load/:exerciseId': 'Load predefined exercise'
       }
     },
     websocket: {
