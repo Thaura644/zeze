@@ -14,14 +14,11 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python packages for audio processing
-# We use --break-system-packages because we are in an isolated container
+# Install basic Python packages (ML packages removed to avoid build issues)
+# Audio processing will be handled via external services or simplified libraries
 RUN pip3 install --no-cache-dir --break-system-packages \
     numpy \
-    scipy \
-    librosa \
-    tensorflow \
-    torch
+    requests
 
 # Copy package files
 COPY package*.json ./
