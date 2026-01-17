@@ -4,7 +4,6 @@
 -- Enable necessary extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-CREATE EXTENSION IF NOT EXISTS timescaledb;
 
 -- Users Table
 CREATE TABLE users (
@@ -214,9 +213,8 @@ CREATE TABLE system_logs (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- Convert practice_sessions and system_logs to hypertables
-SELECT create_hypertable('practice_sessions', 'start_time', chunk_time_interval => INTERVAL '1 week');
-SELECT create_hypertable('system_logs', 'created_at', chunk_time_interval => INTERVAL '1 day');
+-- Note: Using standard PostgreSQL (TimescaleDB not available in Supabase)
+-- practice_sessions and system_logs are optimized with appropriate indexes for time-series queries
 
 -- Create indexes for performance
 CREATE INDEX idx_songs_youtube_id ON songs(youtube_id);
@@ -241,15 +239,99 @@ INSERT INTO chords (name, notation, root_note, chord_type, difficulty_level) VAL
 ('E Minor', 'Em', 'E', 'minor', 1),
 ('A Minor', 'Am', 'A', 'minor', 1);
 
--- Create RLS policies for Supabase (if needed)
--- These would be set up in Supabase dashboard or via migration
+-- ========================================
+-- ROW LEVEL SECURITY (RLS) POLICIES
+-- ========================================
 
--- Grant necessary permissions (adjust based on your needs)
-GRANT ALL ON users TO authenticated;
-GRANT ALL ON songs TO authenticated;
-GRANT ALL ON practice_sessions TO authenticated;
-GRANT ALL ON techniques TO authenticated;
-GRANT ALL ON chords TO authenticated;
-GRANT ALL ON user_songs TO authenticated;
-GRANT ALL ON song_techniques TO authenticated;
-GRANT ALL ON user_progress TO authenticated;
+-- Enable RLS on all tables
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE songs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_songs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE practice_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE practice_analysis ENABLE ROW LEVEL SECURITY;
+ALTER TABLE techniques ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chords ENABLE ROW LEVEL SECURITY;
+ALTER TABLE song_techniques ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_progress ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_logs ENABLE ROW LEVEL SECURITY;
+
+-- Users table policies
+CREATE POLICY "Users can view their own profile" ON users
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own profile" ON users
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own profile" ON users
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Songs table policies (public read, authenticated write)
+CREATE POLICY "Anyone can view songs" ON songs
+    FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "Authenticated users can insert songs" ON songs
+    FOR INSERT TO authenticated WITH CHECK (true);
+
+CREATE POLICY "Authenticated users can update songs" ON songs
+    FOR UPDATE TO authenticated USING (true);
+
+-- User Songs policies (personal library)
+CREATE POLICY "Users can view their saved songs" ON user_songs
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can save songs to their library" ON user_songs
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can remove songs from their library" ON user_songs
+    FOR DELETE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their saved songs" ON user_songs
+    FOR UPDATE USING (auth.uid() = user_id);
+
+-- Practice Sessions policies
+CREATE POLICY "Users can view their practice sessions" ON practice_sessions
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can create practice sessions" ON practice_sessions
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their practice sessions" ON practice_sessions
+    FOR UPDATE USING (auth.uid() = user_id);
+
+-- Practice Analysis policies
+CREATE POLICY "Users can view their practice analysis" ON practice_analysis
+    FOR SELECT USING (
+        auth.uid() IN (
+            SELECT user_id FROM practice_sessions WHERE session_id = practice_analysis.session_id
+        )
+    );
+
+CREATE POLICY "Users can create practice analysis" ON practice_analysis
+    FOR INSERT WITH CHECK (
+        auth.uid() IN (
+            SELECT user_id FROM practice_sessions WHERE session_id = practice_analysis.session_id
+        )
+    );
+
+-- Techniques policies (public read)
+CREATE POLICY "Anyone can view techniques" ON techniques
+    FOR SELECT TO authenticated USING (true);
+
+-- Chords policies (public read)
+CREATE POLICY "Anyone can view chords" ON chords
+    FOR SELECT TO authenticated USING (true);
+
+-- Song Techniques policies (public read)
+CREATE POLICY "Anyone can view song techniques" ON song_techniques
+    FOR SELECT TO authenticated USING (true);
+
+-- User Progress policies
+CREATE POLICY "Users can view their progress" ON user_progress
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their progress" ON user_progress
+    FOR ALL USING (auth.uid() = user_id);
+
+-- System Logs policies (service role only)
+CREATE POLICY "Only service role can access system logs" ON system_logs
+    FOR ALL TO service_role USING (true);

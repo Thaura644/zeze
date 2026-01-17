@@ -11,6 +11,9 @@ const logger = require('./config/logger');
 const { query: dbQuery } = require('./config/database');
 const { cache: redisCache } = require('./config/redis');
 
+// Import database migrator
+const databaseMigrator = require('./database/migrator');
+
 // Import routes
 const audioProcessingRoutes = require('./routes/audioProcessing');
 const userRoutes = require('./routes/users');
@@ -268,12 +271,24 @@ const PORT = process.env.PORT || 3001;
 
 async function startServer() {
   try {
-    // Test database connection (optional for startup)
+    // Test database connection and run migrations
     try {
       await dbQuery('SELECT 1');
       logger.info('Database connection established');
+
+      // Run database migrations
+      await databaseMigrator.initialize();
+
     } catch (dbError) {
       logger.warn('Database connection failed, starting without database', { error: dbError.message });
+    }
+
+    // Test Redis connection (optional for startup)
+    try {
+      await redisCache.set('startup_test', 'ok', 10);
+      logger.info('Redis connection established');
+    } catch (redisError) {
+      logger.warn('Redis connection failed, starting without cache', { error: redisError.message });
     }
 
     // Test Redis connection (optional for startup)
