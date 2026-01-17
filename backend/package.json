@@ -61,5 +61,8 @@
     "learning"
   ],
   "author": "ZEZE Team",
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": "18.x"
+  }
 }
