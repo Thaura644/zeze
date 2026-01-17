@@ -14,6 +14,8 @@ import Slider from '@react-native-community/slider';
 import ExercisePlayer from '../components/Player/ExercisePlayer';
 import axios from 'axios';
 
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001/api';
+
 interface Exercise {
   id: string;
   type: 'melody' | 'chord' | 'scale' | 'riff';
@@ -67,7 +69,7 @@ const ExerciseGeneratorScreen: React.FC = () => {
   const generateExercise = async () => {
     setIsGenerating(true);
     try {
-      const response = await axios.post('http://localhost:3001/api/exercises/generate-exercise', {
+      const response = await axios.post(`${API_BASE_URL}/exercises/generate-exercise`, {
         skillLevel: selectedSkillLevel,
         style: selectedStyle,
         tempo,
@@ -79,7 +81,7 @@ const ExerciseGeneratorScreen: React.FC = () => {
       if (response.data.success) {
         const exerciseData = {
           ...response.data.exercise,
-          audioUrl: `http://localhost:3001${response.data.exercise.audioUrl}`,
+          audioUrl: `${API_BASE_URL}${response.data.exercise.audioUrl}`,
         };
         setCurrentExercise(exerciseData);
       } else {
@@ -96,12 +98,12 @@ const ExerciseGeneratorScreen: React.FC = () => {
   const loadFromLibrary = async (templateId: string) => {
     setIsGenerating(true);
     try {
-      const response = await axios.post(`http://localhost:3001/api/exercises/load/${templateId}`);
+      const response = await axios.post(`${API_BASE_URL}/exercises/load/${templateId}`);
       
       if (response.data.success) {
         const exerciseData = {
           ...response.data.exercise,
-          audioUrl: `http://localhost:3001${response.data.exercise.audioUrl}`,
+          audioUrl: `${API_BASE_URL}${response.data.exercise.audioUrl}`,
         };
         setCurrentExercise(exerciseData);
         setShowLibrary(false);
