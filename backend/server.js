@@ -70,11 +70,24 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Health check endpoint
 app.get('/health', async (req, res) => {
   try {
-    // Check database connection
-    const dbStatus = await dbQuery('SELECT 1').then(() => 'healthy').catch(() => 'unhealthy');
+    let dbStatus = 'not_configured';
+    let redisStatus = 'not_configured';
 
-    // Check Redis connection
-    const redisStatus = await redisCache.set('health_check', 'ok', 10).then(() => 'healthy').catch(() => 'unhealthy');
+    // Check database connection if configured
+    if (process.env.DATABASE_URL || process.env.DB_HOST) {
+      dbStatus = await dbQuery('SELECT 1').then(() => 'healthy').catch((err) => {
+        logger.debug('Database health check failed', { error: err.message });
+        return 'unhealthy';
+      });
+    }
+
+    // Check Redis connection if configured
+    if (process.env.REDIS_URL || process.env.REDIS_HOST) {
+      redisStatus = await redisCache.set('health_check', 'ok', 10).then(() => 'healthy').catch((err) => {
+        logger.debug('Redis health check failed', { error: err.message });
+        return 'unhealthy';
+      });
+    }
 
     const healthData = {
       status: 'healthy',
@@ -91,7 +104,7 @@ app.get('/health', async (req, res) => {
       cpu: process.cpuUsage()
     };
 
-    // Server can run even without database/Redis
+    // Server is always healthy if it can respond
     res.json(healthData);
   } catch (error) {
     logger.error('Health check failed', { error: error.message });
@@ -271,24 +284,32 @@ const PORT = process.env.PORT || 3001;
 
 async function startServer() {
   try {
-    // Test database connection and run migrations
-    try {
-      await dbQuery('SELECT 1');
-      logger.info('Database connection established');
+    // Test database connection and run migrations (optional)
+    if (process.env.DATABASE_URL || process.env.DB_HOST) {
+      try {
+        await dbQuery('SELECT 1');
+        logger.info('Database connection established');
 
-      // Run database migrations
-      await databaseMigrator.initialize();
+        // Run database migrations
+        await databaseMigrator.initialize();
 
-    } catch (dbError) {
-      logger.warn('Database connection failed, starting without database', { error: dbError.message });
+      } catch (dbError) {
+        logger.warn('Database connection failed, starting without database', { error: dbError.message });
+      }
+    } else {
+      logger.info('Database not configured, starting in offline mode');
     }
 
     // Test Redis connection (optional for startup)
-    try {
-      await redisCache.set('startup_test', 'ok', 10);
-      logger.info('Redis connection established');
-    } catch (redisError) {
-      logger.warn('Redis connection failed, starting without cache', { error: redisError.message });
+    if (process.env.REDIS_URL || process.env.REDIS_HOST) {
+      try {
+        await redisCache.set('startup_test', 'ok', 10);
+        logger.info('Redis connection established');
+      } catch (redisError) {
+        logger.warn('Redis connection failed, starting without cache', { error: redisError.message });
+      }
+    } else {
+      logger.info('Redis not configured, starting without cache');
     }
 
     // Test Redis connection (optional for startup)

@@ -1,16 +1,33 @@
 const { Pool } = require('pg');
 const logger = require('./logger');
 
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 5432,
-  database: process.env.DB_NAME || 'zeze_guitar',
-  user: process.env.DB_USER || 'zeze_user',
-  password: process.env.DB_PASSWORD,
-  max: 20, // maximum number of clients in the pool
-  idleTimeoutMillis: 30000, // how long a client is allowed to remain idle before being closed
-  connectionTimeoutMillis: 2000, // how long to wait when connecting a new client
-});
+// Parse DATABASE_URL for Supabase or use individual environment variables
+let poolConfig;
+
+if (process.env.DATABASE_URL) {
+  // Use DATABASE_URL for Supabase/production
+  poolConfig = {
+    connectionString: process.env.DATABASE_URL,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000, // increased for production
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  };
+} else {
+  // Fallback to individual environment variables for development
+  poolConfig = {
+    host: process.env.DB_HOST || 'localhost',
+    port: process.env.DB_PORT || 5432,
+    database: process.env.DB_NAME || 'zeze_guitar',
+    user: process.env.DB_USER || 'zeze_user',
+    password: process.env.DB_PASSWORD,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
+  };
+}
+
+const pool = new Pool(poolConfig);
 
 // Test database connection
 pool.on('connect', () => {

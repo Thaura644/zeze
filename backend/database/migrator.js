@@ -12,6 +12,12 @@ class DatabaseMigrator {
 
   async initialize() {
     try {
+      // Skip migrations if database is not configured
+      if (!process.env.DATABASE_URL && !process.env.DB_HOST) {
+        logger.info('Database not configured, skipping migrations');
+        return;
+      }
+
       // Create migrations tracking table if it doesn't exist
       await this.createMigrationsTable();
 
@@ -23,8 +29,8 @@ class DatabaseMigrator {
 
       logger.info('Database migration completed successfully');
     } catch (error) {
-      logger.error('Database migration failed', { error: error.message });
-      throw error;
+      logger.error('Database migration failed, continuing without database', { error: error.message });
+      // Don't throw error - allow server to start without database
     }
   }
 
