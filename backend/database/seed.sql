@@ -2,83 +2,101 @@
 -- This file contains sample data for testing and development
 
 -- Sample techniques
-INSERT INTO techniques (name, slug, category, difficulty_level, description, instructions, common_mistakes, tips) VALUES
-('Basic Strumming', 'basic-strumming', 'rhythm', 1, 
- 'Fundamental down-up strumming pattern for guitar', 
- '["Keep wrist relaxed", "Use consistent motion", "Start with downstrokes only"]',
- '["Too much arm movement", "Inconsistent timing"]',
- '["Practice with metronome", "Start slowly"]'),
- 
-('Chord Transitions', 'chord-transitions', 'rhythm', 2,
- 'Smoothly changing between different chord shapes',
- '["Move fingers together", "Keep fingers close to fretboard", "Anticipate next chord shape"]',
- '["Lifting fingers too high", "Not anticipating changes"]',
- '["Practice chord shapes separately", "Use a metronome"]'),
- 
-('Barre Chords', 'barre-chords', 'technique', 4,
- 'Using index finger to press multiple strings across the fretboard',
- '["Apply firm pressure with index finger", "Position thumb behind neck for support", "Start with simpler barre chords like F"]',
- '["Not enough pressure", "Index finger not straight", "Thumb in wrong position"]',
- '["Build finger strength gradually", "Practice partial barre first", "Use lighter gauge strings initially"]'),
- 
-('Hammer-ons', 'hammer-ons', 'lead', 3,
- 'Sounding a note by hammering finger onto fret without picking',
- '["Place finger on lower fret", "Strike the note", "Quickly hammer higher fret finger"]',
- '["Not hammering firmly enough", "Timing the hammer incorrectly"]',
- '["Practice slowly at first", "Build finger strength", "Use legato exercises"]'),
- 
-('Pull-offs', 'pull-offs', 'lead', 3,
- 'Sounding a note by pulling finger off fret without picking',
- '["Fret both notes", "Strike higher note", "Pull finger down and slightly towards palm"]',
- '["Not pulling firmly enough", "Finger hitting other strings"]',
- '["Practice with clean pull-offs", "Control finger movement", "Coordinate with hammer-ons"]'),
- 
-('Fingerpicking', 'fingerpicking', 'technique', 3,
- 'Plucking strings individually with fingers instead of strumming',
- '["Rest thumb on bass strings", "Use index, middle, ring for treble strings", "Maintain steady rhythm"]',
- '["Inconsistent finger movement", "Thumb moving too much", "Uneven dynamics"]',
- '["Start with simple patterns", "Practice with metronome", "Focus on clean tone"]'),
- 
-('Bending', 'string-bending', 'lead', 4,
- 'Pushing or pulling string to raise its pitch',
- '["Place fingers firmly", "Use wrist and forearm", "Bend to target pitch", "Listen carefully for pitch accuracy"]',
- '["Overshooting pitch", "Not enough bend", "String buzzing", "Losing fret control"]',
- '["Practice with tuner", "Start with small bends", "Build finger strength"]'),
- 
-('Vibrato', 'vibrato', 'lead', 5,
- 'Adding pitch variation to sustained notes',
- '["Keep finger anchored", "Use wrist motion", "Maintain consistent speed and width"]',
- '["Too wide or too narrow", "Inconsistent speed", "Affecting pitch too much"]',
- '["Listen to professional players", "Practice slowly", "Record and analyze technique"]'),
- 
-('Palm Muting', 'palm-muting', 'technique', 2,
- 'Dampening strings with palm of picking hand for percussive effect',
- '["Rest palm lightly on strings near bridge", "Adjust pressure for desired muting level", "Maintain picking motion"]',
- '["Muting too much", "Not muting enough", "Palm too far from bridge"]',
- '["Experiment with palm position", "Practice with different rhythms", "Combine with open strings"]'),
- 
-('Power Chords', 'power-chords', 'rhythm', 2,
- 'Two or three-note chords commonly used in rock music',
- '["Index finger on lower string", "Ring finger on higher string", "Apply even pressure"]',
- '["Not muting unused strings", "Inconsistent fingering"]',
- '["Practice chord changes", "Use palm muting", "Focus on clean transitions"]');
+INSERT INTO techniques (
+  technique_id, name, slug, category, difficulty_level, description,
+  instructions, common_mistakes, tips
+) VALUES
+(
+  '550e8400-e29b-41d4-a716-446655440000'::uuid,
+  'Basic Strumming',
+  'basic-strumming',
+  'rhythm',
+  1,
+  'Fundamental down-up strumming pattern for guitar',
+  '["Keep wrist relaxed", "Use consistent motion", "Start with downstrokes only"]'::jsonb,
+  '["Too much arm movement", "Inconsistent timing"]'::text[],
+  '["Practice with metronome", "Start slowly"]'::text[]
+),
+(
+  '550e8400-e29b-41d4-a716-446655440001'::uuid,
+  'Hammer-ons & Pull-offs',
+  'hammer-ons',
+  'technique',
+  2,
+  'Build speed and accuracy with legato techniques.',
+  '["Place finger on fret", "Pick the note", "Quickly hammer second finger down", "Release pressure to let note ring"]'::jsonb,
+  '["Not hammering firmly enough", "Timing the hammer incorrectly"]'::text[],
+  '["Practice slowly at first", "Use a metronome", "Focus on clean sound"]'::text[]
+),
+(
+  '550e8400-e29b-41d4-a716-446655440002'::uuid,
+  'Strumming Patterns',
+  'strumming-patterns',
+  'rhythm',
+  1,
+  'Practice common strumming patterns and tempo control.',
+  '["Hold pick correctly", "Practice downstrokes first", "Add upstrokes gradually", "Maintain consistent tempo"]'::jsonb,
+  '["Inconsistent timing", "Too much arm movement"]'::text[],
+  '["Start with simple down-up pattern", "Use a metronome", "Practice with songs you know"]'::text[]
+),
+(
+  '550e8400-e29b-41d4-a716-446655440003'::uuid,
+  'Pentatonic Scale',
+  'pentatonic-scale',
+  'solo',
+  1,
+  'Master the minor pentatonic scale for blues/rock solos.',
+  '["Learn the basic box pattern", "Practice ascending and descending", "Add bends and vibrato", "Apply to simple chord progressions"]'::jsonb,
+  '["Playing outside the scale", "Poor timing with bends"]'::text[],
+  '["Start slow with a metronome", "Practice with backing tracks", "Learn multiple positions"]'::text[]
+)
+ON CONFLICT (slug) DO NOTHING;
 
 -- Sample chords
-INSERT INTO chords (name, notation, root_note, chord_type, intervals, basic_fingering, difficulty_level) VALUES
-('C Major', 'C', 'C', 'major', ARRAY[0, 4, 7], 
- '{"x": ["3", "2", "0", "1", "0"]}', 1),
-('G Major', 'G', 'G', 'major', ARRAY[0, 4, 7],
- '{"3": ["3", "2", "0", "0", "3", "3"]}', 1),
-('D Major', 'D', 'D', 'major', ARRAY[0, 4, 7],
- '{"x": ["x", "x", "0", "2", "3", "2"]}', 2),
-('A Minor', 'Am', 'A', 'minor', ARRAY[0, 3, 7],
- '{"x": ["x", "0", "2", "2", "1", "0"]}', 1),
-('E Minor', 'Em', 'E', 'minor', ARRAY[0, 3, 7],
- '{"0": ["0", "2", "2", "0", "0", "0"]}', 1),
-('F Major', 'F', 'F', 'major', ARRAY[0, 4, 7],
- '{"1": ["1", "3", "3", "2", "1", "1"]}', 3),
-('D Minor', 'Dm', 'D', 'minor', ARRAY[0, 3, 7],
- '{"x": ["x", "x", "0", "2", "3", "1"]}', 2);
+INSERT INTO chords (
+  chord_id, name, notation, root_note, chord_type, difficulty_level
+) VALUES
+(
+  '550e8400-e29b-41d4-a716-446655440100'::uuid,
+  'C Major',
+  'C',
+  'C',
+  'major',
+  1
+),
+(
+  '550e8400-e29b-41d4-a716-446655440101'::uuid,
+  'G Major',
+  'G',
+  'G',
+  'major',
+  1
+),
+(
+  '550e8400-e29b-41d4-a716-446655440102'::uuid,
+  'D Major',
+  'D',
+  'D',
+  'major',
+  2
+),
+(
+  '550e8400-e29b-41d4-a716-446655440103'::uuid,
+  'E Minor',
+  'Em',
+  'E',
+  'minor',
+  1
+),
+(
+  '550e8400-e29b-41d4-a716-446655440104'::uuid,
+  'A Minor',
+  'Am',
+  'A',
+  'minor',
+  1
+)
+ON CONFLICT (notation, root_note, chord_type) DO NOTHING;
 
 -- Sample songs
 INSERT INTO songs (

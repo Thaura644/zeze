@@ -12,6 +12,8 @@ import { RootState } from '@/store';
 import { Song } from '@/types/music';
 import Player from '@/components/Player/Player';
 import { COLORS, SPACING, TYPOGRAPHY } from '@/constants/theme';
+import { useNavigation } from '@react-navigation/native';
+import Toast from 'react-native-toast-message';
 
 const PlayerScreen: React.FC = () => {
   const dispatch = useDispatch();
@@ -21,33 +23,18 @@ const PlayerScreen: React.FC = () => {
     loading,
   } = useSelector((state: RootState) => state.player);
 
+  const navigation = useNavigation();
+
   React.useEffect(() => {
-    if (!currentSong) {
-      const demoSong: Song = {
-        id: 'demo-song',
-        title: 'Wonderwall',
-        artist: 'Oasis',
-        youtubeId: 'hLQl3wQQbQ0',
-        videoUrl: 'https://www.youtube.com/embed/hLQl3wQQbQ0',
-        duration: 258,
-        tempo: 86,
-        key: 'G',
-        chords: [
-          { name: 'Em', startTime: 0, duration: 3.5, fingerPositions: [{ fret: 0, string: 0 }] },
-          { name: 'C', startTime: 3.5, duration: 2, fingerPositions: [{ fret: 0, string: 1 }] },
-          { name: 'D', startTime: 5.5, duration: 2, fingerPositions: [{ fret: 2, string: 1 }] },
-          { name: 'G', startTime: 7.5, duration: 4, fingerPositions: [{ fret: 3, string: 0 }] },
-          { name: 'Em', startTime: 11.5, duration: 3.5, fingerPositions: [{ fret: 0, string: 0 }] },
-          { name: 'C', startTime: 15, duration: 2, fingerPositions: [{ fret: 0, string: 1 }] },
-          { name: 'D', startTime: 17, duration: 2, fingerPositions: [{ fret: 2, string: 1 }] },
-          { name: 'G', startTime: 19, duration: 4, fingerPositions: [{ fret: 3, string: 0 }] },
-        ],
-        difficulty: 3,
-        processedAt: new Date().toISOString(),
-      };
-      dispatch(loadSong(demoSong));
+    if (!currentSong && !loading) {
+      navigation.navigate('Home' as any);
+      Toast.show({
+        type: 'info',
+        text1: 'No Song Selected',
+        text2: 'Please select or process a song first',
+      });
     }
-  }, [currentSong, dispatch]);
+  }, [currentSong, loading, navigation]);
 
   const handleBack = () => {
     // Navigation will be handled by React Navigation usually, 
@@ -71,6 +58,7 @@ const PlayerScreen: React.FC = () => {
         song={currentSong}
         onBack={handleBack}
       />
+      {/* TODO: add tuner functionality */}
     </>
   );
 };

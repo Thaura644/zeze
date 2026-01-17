@@ -7,10 +7,11 @@ import {
   ScrollView,
   Dimensions,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
-import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
+import Toast from 'react-native-toast-message';
+import { Video, ResizeMode, AVPlaybackStatus, Audio } from 'expo-av';
 import { useDispatch, useSelector } from 'react-redux';
+import { useNavigation } from '@react-navigation/native';
 import { play, pause, setCurrentTime, nextChord, previousChord, setDuration } from '@/store/slices/playerSlice';
 import { RootState, AppDispatch } from '@/store';
 import { Song } from '@/types/music';
@@ -19,6 +20,7 @@ import ChordDisplay from '@/components/Player/ChordDisplay';
 import useAudioSync from '@/hooks/useAudioSync';
 import usePracticeSession from '@/hooks/usePracticeSession';
 import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS, SHADOWS } from '@/constants/theme';
+import { LEARNING_ROAMMAP } from '@/data/learningRoadmap';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -29,6 +31,7 @@ interface PlayerProps {
 
 const Player: React.FC<PlayerProps> = ({ song, onBack }) => {
   const dispatch = useDispatch<AppDispatch>();
+  const navigation = useNavigation();
   const videoRef = useRef<Video>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
@@ -38,6 +41,13 @@ const Player: React.FC<PlayerProps> = ({ song, onBack }) => {
   const [tempoPercentage, setTempoPercentage] = useState(100);
   const [loopSection, setLoopSection] = useState<{ start: number; end: number } | null>(null);
   const [showTechniqueHelp, setShowTechniqueHelp] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [activeStem, setActiveStem] = useState<'both' | 'vocals' | 'instrumental'>('both');
+  const [isSeparating, setIsSeparating] = useState(false);
+  const [separatedTracks, setSeparatedTracks] = useState<{ vocals?: string; instrumental?: string } | null>(null);
+  const [showSkillsDropdown, setShowSkillsDropdown] = useState(false);
 
   const {
     isPlaying,
@@ -58,6 +68,32 @@ const Player: React.FC<PlayerProps> = ({ song, onBack }) => {
   });
 
   const currentChord = currentChordIndex >= 0 ? song.chords[currentChordIndex] : null;
+
+  // Helper functions for skills
+  const getRequiredSkills = (song: Song): string[] => {
+    // Based on song difficulty and characteristics, determine required skills
+    const skills: string[] = [];
+
+    if (song.difficulty <= 3) {
+      skills.push('open-chords', 'strumming-patterns');
+    } else if (song.difficulty <= 6) {
+      skills.push('barre-chords', 'fingerpicking', 'chord-progressions');
+    } else {
+      skills.push('arpeggios', 'sweeping', 'major-scale-modes');
+    }
+
+    // Add rhythm and timing skills
+    skills.push('strumming-patterns');
+
+    // Add theory skills
+    skills.push('key-signatures');
+
+    return skills;
+  };
+
+  const findSkillById = (skillId: string) => {
+    return LEARNING_ROAMMAP.flatMap(cat => cat.skills).find(s => s.id === skillId);
+  };
 
   // Auto-hide controls timer
   useEffect(() => {
@@ -115,7 +151,11 @@ const Player: React.FC<PlayerProps> = ({ song, onBack }) => {
     if (!status.isLoaded) {
       if (status.error) {
         console.error('Playback error:', status.error);
-        Alert.alert('Error', 'Failed to load video');
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Failed to load video',
+        });
       }
       return;
     }
@@ -128,7 +168,11 @@ const Player: React.FC<PlayerProps> = ({ song, onBack }) => {
       if (practiceSession.sessionActive) {
         practiceSession.endSession();
       }
-      Alert.alert('Song Complete', 'Great job! You finished the song.');
+      Toast.show({
+        type: 'success',
+        text1: 'Song Complete',
+        text2: 'Great job! You finished the song.',
+      });
     }
 
     if (status.durationMillis && status.durationMillis > 0) {
@@ -151,6 +195,57 @@ const Player: React.FC<PlayerProps> = ({ song, onBack }) => {
     setTempoPercentage(percentage);
     setPlaybackSpeed(percentage / 100);
   }, []);
+
+  const toggleMute = useCallback(() => {
+    setIsMuted(!isMuted);
+  }, [isMuted]);
+
+  const startRecording = async () => {
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (permission.status === 'granted') {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+        });
+        const { recording } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        );
+        setRecording(recording);
+        setIsRecording(true);
+        Toast.show({
+          type: 'info',
+          text1: 'Recording Started',
+        });
+      } else {
+        Toast.show({
+          type: 'error',
+          text1: 'Permission Denied',
+          text2: 'Microphone permission is required to record',
+        });
+      }
+    } catch (err) {
+      console.error('Failed to start recording', err);
+    }
+  };
+
+  const stopRecording = async () => {
+    try {
+      if (!recording) return;
+      setIsRecording(false);
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      setRecording(null);
+      Toast.show({
+        type: 'success',
+        text1: 'Recording Saved',
+        text2: `Saved to ${uri?.split('/').pop()}`,
+      });
+      // Future: Offer to upload/analyze
+    } catch (err) {
+      console.error('Failed to stop recording', err);
+    }
+  };
 
   if (loading) {
     return (
@@ -175,7 +270,7 @@ const Player: React.FC<PlayerProps> = ({ song, onBack }) => {
             onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
             rate={playbackSpeed}
             shouldPlay={isPlaying}
-            isMuted={false}
+            isMuted={isMuted}
             volume={1.0}
           />
         ) : (
@@ -196,13 +291,64 @@ const Player: React.FC<PlayerProps> = ({ song, onBack }) => {
               <TouchableOpacity onPress={onBack} style={styles.backButton}>
                 <Text style={styles.backButtonText}>← Back</Text>
               </TouchableOpacity>
-              <View style={styles.songInfo}>
-                <Text style={styles.songTitle}>{song.title}</Text>
-                <Text style={styles.songArtist}>{song.artist}</Text>
-              </View>
+            <View style={styles.songInfo}>
+              <Text style={styles.songTitle}>{song.title}</Text>
+              <Text style={styles.songArtist}>{song.artist}</Text>
             </View>
+            <TouchableOpacity
+              style={styles.skillsButton}
+              onPress={() => setShowSkillsDropdown(!showSkillsDropdown)}
+            >
+              <Text style={styles.skillsButtonText}>🎓</Text>
+            </TouchableOpacity>
+          </View>
+
+          {showSkillsDropdown && (
+            <View style={styles.skillsDropdown}>
+              <Text style={styles.skillsTitle}>Skills Required for this Song:</Text>
+              {getRequiredSkills(song).map((skillId) => {
+                const skill = findSkillById(skillId);
+                return skill ? (
+                  <TouchableOpacity
+                    key={skill.id}
+                    style={styles.skillItem}
+                    onPress={() => {
+                      setShowSkillsDropdown(false);
+                      // Navigate to learning view
+                      (navigation as any)?.navigate('Learning', { skillId: skill.id });
+                    }}
+                  >
+                    <Text style={styles.skillItemText}>{skill.name}</Text>
+                    <Text style={styles.skillDifficulty}>{skill.difficulty}</Text>
+                  </TouchableOpacity>
+                ) : null;
+              })}
+            </View>
+          )}
           </TouchableOpacity>
         )}
+      </View>
+
+      {/* Suppression Toggles */}
+      <View style={styles.suppressionBar}>
+        <TouchableOpacity
+          style={[styles.suppressionButton, activeStem === 'both' && styles.suppressionButtonActive]}
+          onPress={() => setActiveStem('both')}
+        >
+          <Text style={styles.suppressionText}>Full Audio</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.suppressionButton, activeStem === 'vocals' && styles.suppressionButtonActive]}
+          onPress={() => setActiveStem('vocals')}
+        >
+          <Text style={styles.suppressionText}>Vocals Only</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.suppressionButton, activeStem === 'instrumental' && styles.suppressionButtonActive]}
+          onPress={() => setActiveStem('instrumental')}
+        >
+          <Text style={styles.suppressionText}>No Vocals</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Main Content */}
@@ -274,6 +420,20 @@ const Player: React.FC<PlayerProps> = ({ song, onBack }) => {
               disabled={currentChordIndex >= song.chords.length - 1}
             >
               <Text style={styles.controlButtonText}>⏭</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.smallControlButton, isMuted && styles.controlButtonActive]}
+              onPress={toggleMute}
+            >
+              <Text style={styles.controlButtonText}>{isMuted ? '🔇' : '🔊'}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.smallControlButton, isRecording && styles.recordingButtonActive]}
+              onPress={isRecording ? stopRecording : startRecording}
+            >
+              <Text style={styles.controlButtonText}>{isRecording ? '⏹' : '🎙️'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -348,7 +508,7 @@ const Player: React.FC<PlayerProps> = ({ song, onBack }) => {
           <View style={styles.sessionInfo}>
             <Text style={styles.sessionTitle}>Practice Session Active</Text>
             <Text style={styles.sessionText}>
-              Started: {practiceSession.startTime?.toLocaleTimeString()}
+              Started: {new Date(practiceSession.startTime || '').toLocaleTimeString()}
             </Text>
             <TouchableOpacity
               style={styles.endSessionButton}
@@ -510,6 +670,51 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
   },
+  suppressionBar: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.surfaceLight,
+    padding: SPACING.xs,
+    marginHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    marginTop: -SPACING.md,
+    zIndex: 10,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    ...SHADOWS.soft,
+  },
+  suppressionButton: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  suppressionButtonActive: {
+    backgroundColor: COLORS.primary,
+  },
+  suppressionText: {
+    color: COLORS.text,
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  smallControlButton: {
+    padding: SPACING.sm,
+    borderRadius: BORDER_RADIUS.round,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  controlButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  recordingButtonActive: {
+    backgroundColor: '#FF4B2B',
+    borderColor: '#FF4B2B',
+  },
   learningControls: {
     marginVertical: SPACING.lg,
     backgroundColor: COLORS.surface,
@@ -612,6 +817,59 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     ...TYPOGRAPHY.button,
     fontSize: 14,
+  },
+  skillsButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+  },
+  skillsButtonText: {
+    fontSize: 20,
+  },
+  skillsDropdown: {
+    position: 'absolute',
+    top: 80,
+    right: SPACING.md,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    minWidth: 250,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    ...SHADOWS.soft,
+  },
+  skillsTitle: {
+    ...TYPOGRAPHY.h3,
+    color: COLORS.text,
+    marginBottom: SPACING.sm,
+    fontSize: 16,
+  },
+  skillItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: BORDER_RADIUS.sm,
+    marginBottom: SPACING.xs,
+    backgroundColor: COLORS.surfaceLight,
+  },
+  skillItemText: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.text,
+    flex: 1,
+    fontSize: 14,
+  },
+  skillDifficulty: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+    textTransform: 'capitalize',
+    fontSize: 12,
   },
 });
 

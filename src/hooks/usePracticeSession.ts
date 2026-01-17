@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Alert } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { ProgressService, StartPracticeRequest, PracticeAnalysisRequest } from '@/services/progressService';
 import { PracticeSession } from '@/types/music';
 
@@ -48,7 +48,7 @@ export const usePracticeSession = (): UsePracticeSessionReturn => {
   }, []);
 
   const startSession = useCallback(async (
-    songId: string, 
+    songId: string,
     options?: Partial<StartPracticeRequest>
   ) => {
     try {
@@ -68,7 +68,7 @@ export const usePracticeSession = (): UsePracticeSessionReturn => {
       const newSession: PracticeSession = {
         id: response.session_id,
         songId: songId,
-        startTime: startTime,
+        startTime: startTime.toISOString(),
         endTime: undefined,
         accuracy: 0,
         chordsPlayed: 0,
@@ -86,13 +86,21 @@ export const usePracticeSession = (): UsePracticeSessionReturn => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to start practice session';
       updateState({ error: errorMessage, loading: false });
-      Alert.alert('Error', errorMessage);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: errorMessage,
+      });
     }
   }, [updateState]);
 
   const endSession = useCallback(async (analysisData?: FormData) => {
     if (!state.currentSession || !state.startTime) {
-      Alert.alert('Error', 'No active practice session');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'No active practice session',
+      });
       return;
     }
 
@@ -106,7 +114,7 @@ export const usePracticeSession = (): UsePracticeSessionReturn => {
       if (analysisData) {
         analysisData.append('session_id', state.currentSession.id);
         const analysis = await ProgressService.submitPracticeAnalysis(analysisData);
-        
+
         updateState({
           accuracy: analysis.analysis_results.overall_accuracy,
         });
@@ -115,7 +123,7 @@ export const usePracticeSession = (): UsePracticeSessionReturn => {
       // Update session with end time and duration
       const updatedSession: PracticeSession = {
         ...state.currentSession,
-        endTime: endTime,
+        endTime: endTime.toISOString(),
         accuracy: state.accuracy,
         notes: state.notes,
       };
@@ -126,15 +134,20 @@ export const usePracticeSession = (): UsePracticeSessionReturn => {
         sessionActive: false,
       });
 
-      Alert.alert(
-        'Session Complete', 
-        `Practice session completed! Overall accuracy: ${state.accuracy.toFixed(1)}%`
-      );
+      Toast.show({
+        type: 'success',
+        text1: 'Session Complete',
+        text2: `Practice session completed! Overall accuracy: ${state.accuracy.toFixed(1)}%`,
+      });
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to end practice session';
       updateState({ error: errorMessage, loading: false });
-      Alert.alert('Error', errorMessage);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: errorMessage,
+      });
     }
   }, [state.currentSession, state.startTime, state.accuracy, state.notes, updateState]);
 

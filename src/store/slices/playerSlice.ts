@@ -68,13 +68,13 @@ const playerSlice = createSlice({
     nextChord: (state) => {
       if (state.currentSong && state.currentChordIndex < state.currentSong.chords.length - 1) {
         state.currentChordIndex += 1;
-        state.currentTime = state.currentSong.chords[state.currentChordIndex].startTime;
+        state.currentTime = state.currentSong.chords[state.currentChordIndex]?.startTime || state.currentTime;
       }
     },
     previousChord: (state) => {
-      if (state.currentChordIndex > 0) {
+      if (state.currentSong && state.currentChordIndex > 0) {
         state.currentChordIndex -= 1;
-        state.currentTime = state.currentSong.chords[state.currentChordIndex].startTime;
+        state.currentTime = state.currentSong.chords[state.currentChordIndex]?.startTime || state.currentTime;
       }
     },
     seekTo: (state, action: PayloadAction<number>) => {

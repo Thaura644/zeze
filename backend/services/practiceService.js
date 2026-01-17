@@ -1,9 +1,26 @@
-const express = require('express');
-const { query, transaction } = require('../config/database');
-const logger = require('../config/logger');
-const { v4: uuidv4 } = require('uuid');
+const supabase = require('../config/supabase');
 
 class PracticeService {
+  // Log time-series data to Supabase
+  async logToSupabase(session_id, user_id, metrics) {
+    if (!supabase) return;
+
+    try {
+      const { error } = await supabase
+        .from('practice_metrics')
+        .insert([{
+          session_id,
+          user_id,
+          timestamp: new Date().toISOString(),
+          ...metrics
+        }]);
+
+      if (error) throw error;
+    } catch (error) {
+      logger.error('Failed to log to Supabase', { session_id, error: error.message });
+    }
+  }
+
   // Start a new practice session
   async startPracticeSession(sessionData) {
     const {
@@ -24,8 +41,8 @@ class PracticeService {
           tempo_percentage, transposition_key, start_time, device_type, app_version
         ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8)
         RETURNING *`,
-        [user_id, song_id, session_type, focus_techniques, 
-         tempo_percentage, transposition_key, device_type, app_version]
+        [user_id, song_id, session_type, focus_techniques,
+          tempo_percentage, transposition_key, device_type, app_version]
       );
 
       logger.info(`Practice session started: ${result.rows[0].session_id}`);
@@ -81,9 +98,9 @@ class PracticeService {
           session_notes = $18
         WHERE session_id = $1 RETURNING *`,
         [sessionId, duration_seconds, overall_accuracy, timing_accuracy, pitch_accuracy,
-         rhythm_accuracy, chord_accuracy, section_accuracy, mistakes, improvement_areas,
-         notes_played, chords_played, techniques_used, max_speed_bpm, avg_speed_bpm,
-         user_rating, user_feedback, session_notes]
+          rhythm_accuracy, chord_accuracy, section_accuracy, mistakes, improvement_areas,
+          notes_played, chords_played, techniques_used, max_speed_bpm, avg_speed_bpm,
+          user_rating, user_feedback, session_notes]
       );
 
       if (result.rows.length === 0) {
@@ -94,6 +111,15 @@ class PracticeService {
       await this.updateUserStats(result.rows[0].user_id, endData);
 
       logger.info(`Practice session ended: ${sessionId}`);
+
+      // Log to Supabase for time-series analysis
+      this.logToSupabase(sessionId, result.rows[0].user_id, {
+        overall_accuracy,
+        duration_seconds,
+        notes_played,
+        chords_played
+      });
+
       return result.rows[0];
     } catch (error) {
       logger.error('Failed to end practice session', { sessionId, error: error.message });
@@ -176,7 +202,7 @@ class PracticeService {
   async getUserPracticeStats(userId, timeFrame = '30d') {
     try {
       const timeFilter = this.getTimeFilter(timeFrame);
-      
+
       const result = await query(
         `SELECT 
           COUNT(*) as total_sessions,
@@ -211,7 +237,7 @@ class PracticeService {
   async getUserSkillProgression(userId, timeFrame = '90d') {
     try {
       const timeFilter = this.getTimeFilter(timeFrame);
-      
+
       const result = await query(
         `SELECT 
           DATE(start_time) as practice_date,
@@ -304,7 +330,7 @@ class PracticeService {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING *`,
         [sessionId, timestamp, current_chord, accuracy,
-         mistake_detected, encouragement, pitch_data, timing_data]
+          mistake_detected, encouragement, pitch_data, timing_data]
       );
 
       return result.rows[0];
@@ -336,9 +362,9 @@ class PracticeService {
     try {
       // This would be called after ending a session
       // Update user's total practice time, songs learned, streaks, etc.
-      
+
       const practiceTime = sessionData.duration_seconds || 0;
-      
+
       await query(
         `UPDATE users SET 
           total_practice_time = total_practice_time + $1,

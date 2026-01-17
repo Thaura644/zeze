@@ -1,4 +1,4 @@
-import { apiClient } from './api';
+import ApiService from './api';
 
 export interface ProcessingRequest {
   youtubeUrl: string;
@@ -9,10 +9,55 @@ export interface ProcessingRequest {
   };
 }
 
+export interface AudioFileProcessingRequest {
+  file: any; // React Native file object
+  userPreferences?: {
+    targetKey?: string;
+    difficultyLevel?: number;
+    includeTechniques?: string[];
+  };
+}
+
 export interface ProcessingResponse {
   job_id: string;
-  status: 'queued' | 'processing' | 'completed' | 'failed';
-  results?: SongData;
+  status: string;
+  results?: {
+    song_id: string;
+    metadata: {
+      title: string;
+      artist: string;
+      duration: number;
+      original_key: string;
+      tempo_bpm: number;
+      overall_difficulty: number;
+      video_url?: string;
+    };
+    chords: Array<{
+      chord: string;
+      start_time: number;
+      duration: number;
+      confidence?: number;
+      fingerPositions?: Array<{
+        string: number;
+        fret: number;
+      }>;
+    }>;
+    tablature: {
+      tuning: string[];
+      notes: Array<{
+        string: number;
+        fret: number;
+        time: number;
+        duration: number;
+        chord?: string;
+      }>;
+    };
+    techniques: Array<{
+      technique: string;
+      sections: string[];
+    }>;
+    processed_at: string;
+  };
   estimated_completion?: string;
   processing_steps?: ProcessingStep[];
 }
@@ -26,68 +71,77 @@ export interface SongData {
   song_id: string;
   title: string;
   artist: string;
-  duration: number;
-  video_url?: string;
-  key: string;
-  tempo: number;
-  chords: ChordData[];
-  difficulty: number;
-  processed_at?: string;
-}
-
-export interface ChordData {
-  name: string;
-  startTime: number;
-  duration: number;
-  fingerPositions: FingerPosition[];
-}
-
-export interface FingerPosition {
-  fret: number;
-  string: number;
+  album?: string;
+  duration_seconds: number;
+  original_key: string;
+  tempo_bpm: number;
+  overall_difficulty: number;
+  thumbnail_url?: string;
+  popularity_score: number;
+  chords?: Array<{
+    chord: string;
+    start_time: number;
+    duration: number;
+  }>;
+  tablature?: {
+    tuning: string[];
+    notes: Array<{
+      string: number;
+      fret: number;
+      time: number;
+      duration: number;
+    }>;
+  };
+  is_saved?: boolean;
 }
 
 export interface ProcessingStatus {
   job_id: string;
-  status: 'queued' | 'processing' | 'completed' | 'failed';
+  status: string;
   progress_percentage: number;
   current_step: string;
-  estimated_remaining_seconds: number;
-  partial_results?: Partial<SongData>;
+  estimated_remaining_seconds?: number;
+  partial_results?: any;
 }
 
 export class AudioProcessingService {
-  static async processYouTubeUrl(request: ProcessingRequest): Promise<ProcessingResponse> {
-    const response = await apiClient.post('/api/process-youtube', request);
+  static async processYouTubeUrl(request: ProcessingRequest): Promise<any> {
+    const response = await ApiService.processYouTubeUrl(request.youtubeUrl, request.userPreferences);
     return response.data;
   }
 
-  static async getProcessingStatus(jobId: string): Promise<ProcessingStatus> {
-    const response = await apiClient.post('/api/process-status', { jobId });
+  static async uploadAudioFile(request: AudioFileProcessingRequest): Promise<any> {
+    const response = await ApiService.uploadAudio(request.file, request.userPreferences);
     return response.data;
   }
 
-  static async getSongResults(songId: string): Promise<SongData> {
-    const response = await apiClient.get(`/api/songs/${songId}`);
+  static async getProcessingStatus(jobId: string): Promise<any> {
+    const response = await ApiService.getProcessingStatus(jobId);
     return response.data;
   }
 
-  static async pollJobStatus(jobId: string, onUpdate?: (status: ProcessingStatus) => void): Promise<SongData> {
+  static async getSongResults(songId: string): Promise<any> {
+    const response = await ApiService.getSongById(songId);
+    return response.data;
+  }
+
+  static async pollJobStatus(jobId: string, onUpdate?: (status: any) => void): Promise<any> {
     return new Promise((resolve, reject) => {
       const poll = async () => {
         try {
           const status = await this.getProcessingStatus(jobId);
           onUpdate?.(status);
-          
+
           if (status.status === 'completed') {
-            if (status.partial_results) {
-              resolve(status.partial_results as SongData);
+            if (status.results) {
+              resolve(status.results);
             } else {
+              // For completed jobs, get the full results
               const results = await this.getSongResults(jobId.replace('job_', 'song_'));
               resolve(results);
             }
           } else if (status.status === 'failed') {
-            reject(new Error('Processing failed'));
+            reject(new Error(status.error || 'Processing failed'));
           } else {
             setTimeout(poll, 2000); // Poll every 2 seconds
           }
@@ -95,7 +149,7 @@ export class AudioProcessingService {
           reject(error);
         }
       };
-      
+
       poll();
     });
   }

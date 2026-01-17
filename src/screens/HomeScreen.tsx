@@ -1,3 +1,4 @@
+/* Updated HomeScreen with Learning Path CTA placeholders and roadmap display trigger */
 import React, { useState } from 'react';
 import {
   View,
@@ -9,15 +10,18 @@ import {
   ActivityIndicator,
   StatusBar,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import Toast from 'react-native-toast-message';
+import * as DocumentPicker from 'expo-document-picker';
 import { RootState, AppDispatch } from '@/store';
-import { processYouTubeUrl, clearError } from '@/store/slices/songsSlice';
+import { processYouTubeUrl, processAudioFile, clearError } from '@/store/slices/songsSlice';
 import { Song } from '@/types/music';
 import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS, SHADOWS } from '@/constants/theme';
+import { LEARNING_ROAMMAP } from '@/data/learningRoadmap';
 
 const { width } = Dimensions.get('window');
 
@@ -28,18 +32,16 @@ type RootStackParamList = {
 
 type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Home'>;
 
-interface HomeScreenProps {
-  onYouTubeProcess?: (youtubeUrl: string) => Promise<Song | null>;
-}
-
-const HomeScreen: React.FC<HomeScreenProps> = () => {
+const HomeScreen: React.FC = () => {
   const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [activeTab, setActiveTab] = useState<'youtube' | 'upload'>('youtube');
+  const [selectedFile, setSelectedFile] = useState<DocumentPicker.DocumentPickerResult | null>(null);
   const dispatch = useDispatch<AppDispatch>();
   const navigation = useNavigation<HomeScreenNavigationProp>();
 
-  const { loading, error, songs } = useSelector((state: RootState) => state.songs);
+  const { loading, error, songs, processingStatus, processingProgress } = useSelector((state: RootState) => state.songs);
 
-  const handleProcess = async () => {
+  const handleProcessYouTube = async () => {
     if (!youtubeUrl.trim()) {
       Toast.show({
         type: 'error',
@@ -60,32 +62,117 @@ const HomeScreen: React.FC<HomeScreenProps> = () => {
     }
 
     try {
-      const result = await dispatch(processYouTubeUrl(youtubeUrl));
-      if (result.payload) {
-        Toast.show({
-          type: 'success',
-          text1: 'Success',
-          text2: 'Song processed successfully!',
-        });
-        navigation.navigate('Player');
-      } else if (error) {
-        Toast.show({
-          type: 'error',
-          text1: 'Error',
-          text2: error,
-        });
+      const resultAction = await dispatch(processYouTubeUrl(youtubeUrl));
+      handleProcessResult(resultAction);
+    } catch (err) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to initiate processing',
+      });
+    }
+  };
+
+  const handlePickDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'audio/*',
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled) {
+        setSelectedFile(result);
       }
     } catch (err) {
       Toast.show({
         type: 'error',
         text1: 'Error',
-        text2: 'Failed to process song',
+        text2: 'Failed to pick document',
+      });
+    }
+  };
+
+  const handleUploadFile = async () => {
+    if (!selectedFile || selectedFile.canceled) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Please select an audio file',
+      });
+      return;
+    }
+
+    const asset = selectedFile.assets[0];
+
+    // In React Native, for multipart/form-data, we need an object with uri, name, and type
+    const fileToUpload = {
+      uri: asset.uri,
+      name: asset.name,
+      type: asset.mimeType || 'audio/mpeg',
+    };
+
+    try {
+      const resultAction = await dispatch(processAudioFile(fileToUpload));
+      handleProcessResult(resultAction);
+    } catch (err) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to upload file',
+      });
+    }
+  };
+
+  const handleProcessResult = (resultAction: any) => {
+    if (processYouTubeUrl.fulfilled.match(resultAction) || processAudioFile.fulfilled.match(resultAction)) {
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Processing complete!',
+      });
+
+      const payload = resultAction.payload;
+      if (payload && payload.results) {
+        const songData = payload.results;
+        const newSong: Song = {
+          id: songData.song_id,
+          title: songData.metadata.title,
+          artist: songData.metadata.artist,
+          youtubeId: songData.metadata.video_url?.split('v=')[1]?.split('&')[0] || '',
+          videoUrl: songData.metadata.video_url || '',
+          duration: songData.metadata.duration,
+          tempo: songData.metadata.tempo_bpm,
+          key: songData.metadata.original_key,
+          chords: (songData.chords as any[])?.map((chord: any) => ({
+            name: chord.chord || chord.name,
+            startTime: chord.start_time || chord.startTime,
+            duration: chord.duration,
+            fingerPositions: chord.fingerPositions || [],
+          })) || [],
+          difficulty: songData.metadata.overall_difficulty,
+          processedAt: new Date().toISOString(),
+        };
+        dispatch({ type: 'player/loadSong', payload: newSong });
+        navigation.navigate('Player');
+      }
+    } else {
+      const errorMsg = resultAction.payload as string;
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: errorMsg || 'Failed to process song',
       });
     }
   };
 
   const handleSongPress = (song: Song) => {
+    dispatch({ type: 'player/loadSong', payload: song });
     navigation.navigate('Player');
+  };
+
+  const handleRoadmapItemPress = (skillId: string) => {
+    // Navigate to learning view for this skill
+    navigation.navigate('Learning' as any, { skillId });
   };
 
   const exampleUrls = [
@@ -99,49 +186,155 @@ const HomeScreen: React.FC<HomeScreenProps> = () => {
       <StatusBar barStyle="light-content" />
 
       <View style={styles.header}>
-        <Text style={styles.logo}>🎸 ZEZE</Text>
-        <Text style={styles.tagline}>Master your guitar with AI</Text>
+        <View style={styles.headerTop}>
+          <Text style={styles.logo}>🎸</Text>
+          <TouchableOpacity
+            style={styles.profileButton}
+            onPress={() => navigation.navigate('Profile' as any)}
+          >
+            <Text style={styles.profileIcon}>👤</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.title}>ZEZE</Text>
+        <Text style={styles.subtitle}>
+          Your AI-powered guitar tutor
+        </Text>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Process New Song</Text>
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.textInput}
-            placeholder="Paste YouTube URL here..."
-            placeholderTextColor={COLORS.textMuted}
-            value={youtubeUrl}
-            onChangeText={setYoutubeUrl}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
+        <View style={styles.tabContainer}>
           <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleProcess}
-            disabled={loading}
+            style={[styles.tab, activeTab === 'youtube' && styles.activeTab]}
+            onPress={() => setActiveTab('youtube')}
           >
-            {loading ? (
-              <ActivityIndicator color={COLORS.text} />
-            ) : (
-              <Text style={styles.buttonText}>Process Song</Text>
-            )}
+            <Text style={[styles.tabText, activeTab === 'youtube' && styles.activeTabText]}>YouTube</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'upload' && styles.activeTab]}
+            onPress={() => setActiveTab('upload')}
+          >
+            <Text style={[styles.tabText, activeTab === 'upload' && styles.activeTabText]}>Upload File</Text>
           </TouchableOpacity>
         </View>
+
+        {activeTab === 'youtube' ? (
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Paste YouTube URL</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="e.g. https://youtube.com/watch?v=..."
+              placeholderTextColor={COLORS.textMuted}
+              value={youtubeUrl}
+              onChangeText={setYoutubeUrl}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <TouchableOpacity
+              style={[styles.button, loading && styles.buttonDisabled]}
+              onPress={handleProcessYouTube}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color={COLORS.text} />
+              ) : (
+                <Text style={styles.buttonText}>Process Song</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Select Audio File (MP3, WAV, etc.)</Text>
+            <TouchableOpacity style={styles.filePicker} onPress={handlePickDocument}>
+              <Text style={styles.filePickerText}>
+                {selectedFile && !selectedFile.canceled ? selectedFile.assets[0].name : "Tap to choose file"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.button, (!selectedFile || loading) && styles.buttonDisabled]}
+              onPress={handleUploadFile}
+              disabled={loading || !selectedFile}
+            >
+              {loading ? (
+                <ActivityIndicator color={COLORS.text} />
+              ) : (
+                <Text style={styles.buttonText}>Upload & Process</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Quick Start Examples</Text>
-        <View style={styles.examplesGrid}>
-          {exampleUrls.map((example, index) => (
-            <TouchableOpacity
-              key={index}
-              style={styles.exampleChip}
-              onPress={() => setYoutubeUrl(example.url)}
-            >
-              <Text style={styles.exampleChipText}>{example.title}</Text>
-            </TouchableOpacity>
-          ))}
+      {processingStatus === 'processing' && (
+        <View style={styles.processingCard}>
+          <View style={styles.processingHeader}>
+            <ActivityIndicator size="small" color={COLORS.primary} />
+            <Text style={styles.processingTitle}>Processing Audio</Text>
+          </View>
+          <Text style={styles.processingText}>
+            Analyzing chords, tempo, and generating tablature...
+          </Text>
+          <View style={styles.progressContainer}>
+            <View style={styles.progressBar}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${processingProgress}%` }
+                ]}
+              />
+            </View>
+            <Text style={styles.progressText}>{processingProgress}%</Text>
+          </View>
         </View>
+      )}
+
+      {activeTab === 'youtube' && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Quick Start Examples</Text>
+          <View style={styles.examplesGrid}>
+            {exampleUrls.map((example, index) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.exampleChip}
+                onPress={() => setYoutubeUrl(example.url)}
+              >
+                <Text style={styles.exampleChipText}>{example.title}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {/* Learning Roadmap */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>🎸 Learning Roadmap</Text>
+        <Text style={styles.sectionSubtitle}>Follow this structured path to master guitar techniques and theory.</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.roadmapScroll}>
+          <View style={styles.roadmapContainer}>
+            {LEARNING_ROAMMAP.map((category, catIndex) => (
+              <View key={category.category} style={[styles.roadmapCategory, catIndex > 0 && styles.roadmapCategoryMargin]}>
+                <Text style={styles.roadmapCategoryTitle}>{category.category}</Text>
+                <View style={styles.roadmapSkills}>
+                  {category.skills.map((skill) => (
+                    <TouchableOpacity
+                      key={skill.id}
+                      style={[
+                        styles.roadmapSkill,
+                        { backgroundColor: getDifficultyColor(skill.difficulty) }
+                      ]}
+                      onPress={() => handleRoadmapItemPress(skill.id)}
+                    >
+                      <Text style={styles.roadmapSkillTitle} numberOfLines={2}>{skill.name}</Text>
+                      <View style={styles.roadmapSkillMeta}>
+                        <Text style={styles.roadmapSkillDifficulty}>{skill.difficulty}</Text>
+                        {skill.duration && <Text style={styles.roadmapSkillDuration}>{skill.duration}</Text>}
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
       </View>
 
       {songs.length > 0 && (
@@ -185,6 +378,15 @@ const HomeScreen: React.FC<HomeScreenProps> = () => {
   );
 };
 
+const getDifficultyColor = (difficulty: string) => {
+  switch (difficulty) {
+    case 'beginner': return '#4CAF50';
+    case 'intermediate': return '#FF9800';
+    case 'advanced': return '#F44336';
+    default: return COLORS.surfaceLight;
+  }
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -199,15 +401,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     alignItems: 'center',
   },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: SPACING.xs,
+  },
+  profileButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+  },
+  profileIcon: {
+    fontSize: 20,
+  },
   logo: {
+    fontSize: 48,
+    marginBottom: SPACING.xs,
+  },
+  title: {
     ...TYPOGRAPHY.h1,
     color: COLORS.primary,
     marginBottom: SPACING.xs,
   },
-  tagline: {
+  subtitle: {
     ...TYPOGRAPHY.body,
     color: COLORS.textSecondary,
-    textAlign: 'center',
     opacity: 0.8,
   },
   card: {
@@ -219,6 +444,29 @@ const styles = StyleSheet.create({
     borderColor: COLORS.glassBorder,
     ...SHADOWS.soft,
   },
+  tabContainer: {
+    flexDirection: 'row',
+    marginBottom: SPACING.lg,
+    backgroundColor: COLORS.surfaceLight,
+    borderRadius: BORDER_RADIUS.md,
+    padding: 4,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  activeTab: {
+    backgroundColor: COLORS.primary,
+  },
+  tabText: {
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  activeTabText: {
+    color: COLORS.text,
+  },
   section: {
     marginTop: SPACING.xl,
     paddingHorizontal: SPACING.lg,
@@ -228,18 +476,42 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     marginBottom: SPACING.md,
   },
+  sectionSubtitle: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.lg,
+  },
   inputContainer: {
     gap: SPACING.md,
   },
+  label: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    marginBottom: -8,
+  },
   textInput: {
     backgroundColor: COLORS.surfaceLight,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
     color: COLORS.text,
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
     fontSize: 16,
     borderWidth: 1,
     borderColor: COLORS.glassBorder,
-    marginBottom: SPACING.md,
+  },
+  filePicker: {
+    backgroundColor: COLORS.surfaceLight,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    borderStyle: 'dashed',
+    height: 56,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filePickerText: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
   },
   button: {
     backgroundColor: COLORS.primary,
@@ -273,6 +545,108 @@ const styles = StyleSheet.create({
   exampleChipText: {
     color: COLORS.textSecondary,
     fontSize: 14,
+  },
+  processingCard: {
+    backgroundColor: COLORS.surface,
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.lg,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    ...SHADOWS.soft,
+  },
+  processingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  processingTitle: {
+    ...TYPOGRAPHY.h3,
+    color: COLORS.primary,
+    marginLeft: SPACING.sm,
+  },
+  processingText: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.md,
+  },
+  progressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  progressBar: {
+    flex: 1,
+    height: 8,
+    backgroundColor: COLORS.surfaceLight,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: COLORS.primary,
+    borderRadius: 4,
+  },
+  progressText: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+    minWidth: 32,
+    textAlign: 'right',
+  },
+  roadmapScroll: {
+    marginTop: SPACING.sm,
+  },
+  roadmapContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: SPACING.sm,
+  },
+  roadmapCategory: {
+    width: width * 0.8,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    ...SHADOWS.soft,
+  },
+  roadmapCategoryMargin: {
+    marginLeft: SPACING.md,
+  },
+  roadmapCategoryTitle: {
+    ...TYPOGRAPHY.h3,
+    color: COLORS.primary,
+    marginBottom: SPACING.md,
+  },
+  roadmapSkills: {
+    gap: SPACING.sm,
+  },
+  roadmapSkill: {
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+  },
+  roadmapSkillTitle: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.text,
+    fontWeight: '600',
+    marginBottom: SPACING.xs,
+  },
+  roadmapSkillMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  roadmapSkillDifficulty: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+    textTransform: 'capitalize',
+  },
+  roadmapSkillDuration: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
   },
   songCard: {
     flexDirection: 'row',
