@@ -35,7 +35,6 @@ RUN mkdir -p /app/logs /app/temp && \
     chown -R node:node /app
 
 # Copy application code
-COPY .env.docker ./.env
 COPY --chown=node:node . .
 
 # Set permissions
