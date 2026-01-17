@@ -5,7 +5,7 @@ const auth = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
 
 // Generate a new guitar exercise
-router.post('/generate-exercise', auth, async (req, res) => {
+router.post('/generate-exercise', auth.authenticate(), async (req, res) => {
   // Validate input
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -107,7 +107,7 @@ router.get('/audio/:exerciseId/:speed', async (req, res) => {
 });
 
 // Generate exercise variation
-router.post('/generate-variation/:exerciseId', auth, async (req, res) => {
+router.post('/generate-variation/:exerciseId', auth.authenticate(), async (req, res) => {
   try {
     // Manual validation
     const { variationType, value } = req.body;
@@ -154,7 +154,7 @@ router.post('/generate-variation/:exerciseId', auth, async (req, res) => {
 });
 
 // Get exercise library (pre-defined exercises)
-router.get('/library', auth, async (req, res) => {
+router.get('/library', auth.authenticate(), async (req, res) => {
   try {
     const { skillLevel, style } = req.query;
     
@@ -234,7 +234,7 @@ router.get('/library', auth, async (req, res) => {
 });
 
 // Load a predefined exercise
-router.post('/load/:exerciseId', auth, async (req, res) => {
+router.post('/load/:exerciseId', auth.authenticate(), async (req, res) => {
   try {
     const { exerciseId } = req.params;
     
