@@ -5,8 +5,7 @@ const auth = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
 
 // Generate a new guitar exercise
-router.post('/generate-exercise', [
-  auth,
+router.post('/generate-exercise', auth, [
   body('skillLevel').isIn(['beginner', 'intermediate', 'advanced']).withMessage('Invalid skill level'),
   body('style').isIn(['rock', 'blues', 'jazz', 'folk', 'classical']).withMessage('Invalid style'),
   body('tempo').isInt({ min: 40, max: 200 }).withMessage('Tempo must be between 40 and 200'),
@@ -93,8 +92,7 @@ router.get('/audio/:exerciseId/:speed', async (req, res) => {
 });
 
 // Generate exercise variation
-router.post('/generate-variation/:exerciseId', [
-  auth,
+router.post('/generate-variation/:exerciseId', auth, [
   body('variationType').isIn(['tempo', 'key', 'style', 'complexity']).withMessage('Invalid variation type'),
   body('value').notEmpty().withMessage('Variation value is required')
 ], async (req, res) => {
