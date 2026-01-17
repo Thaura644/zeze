@@ -6,12 +6,16 @@
 export const COLORS = {
     primary: '#FF6B6B',      // Coral Red (Energetic)
     primaryDark: '#EE5253',
+    primaryLight: '#FF8A8A',
     secondary: '#4ECDC4',    // Turquoise (Fresh)
+    secondaryLight: '#6EE7D7',
     accent: '#FFE66D',       // Sun Yellow (Highlights)
+    warning: '#FFA726',
 
     background: '#121212',   // Deep Black
     surface: '#1E1E1E',      // Elevation 1
     surfaceLight: '#2D2D2D', // Elevation 2
+    surfaceDark: '#161616',   // Lower elevation
 
     text: '#FFFFFF',
     textSecondary: '#A0A0A0',
@@ -50,6 +54,13 @@ export const SHADOWS = {
         shadowRadius: 8,
         elevation: 5,
     },
+    medium: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.4,
+        shadowRadius: 12,
+        elevation: 8,
+    },
 };
 
 export const TYPOGRAPHY = {
@@ -72,7 +83,9 @@ export const TYPOGRAPHY = {
     },
     caption: {
         fontSize: 14,
-        color: COLORS.textSecondary,
+    },
+    captionSmall: {
+        fontSize: 12,
     },
     button: {
         fontSize: 16,
