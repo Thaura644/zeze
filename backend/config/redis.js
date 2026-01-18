@@ -12,15 +12,22 @@ if (process.env.REDIS_URL) {
       port: parseInt(url.port) || 6379,
       password: url.password,
       username: url.username || 'default',
-      tls: url.protocol === 'rediss:' ? {} : false,
+      tls: url.protocol === 'rediss:' ? { rejectUnauthorized: false } : false,
       retryDelayOnFailover: 100,
-      maxRetriesPerRequest: 0, // Disable retries to fail fast
+      maxRetriesPerRequest: null, // Allow retries for better stability
       lazyConnect: true,
-      connectTimeout: 5000, // 5 second timeout
-      commandTimeout: 5000,
+      connectTimeout: 10000, // 10 second timeout
+      commandTimeout: 10000,
       // Additional options for Upstash compatibility
       enableReadyCheck: false,
-      keepAlive: false
+      keepAlive: 10000,
+      reconnectOnError: (err) => {
+        const targetError = 'READONLY';
+        if (err.message.includes(targetError)) {
+          return true;
+        }
+        return false;
+      }
     };
     logger.info('Parsed Redis URL successfully', { host: url.hostname, port: url.port });
   } catch (urlError) {
@@ -43,10 +50,14 @@ if (process.env.REDIS_URL) {
     port: process.env.REDIS_PORT || 6379,
     password: process.env.REDIS_PASSWORD,
     retryDelayOnFailover: 100,
-    maxRetriesPerRequest: 0, // Disable retries to fail fast
+    maxRetriesPerRequest: null,
     lazyConnect: true,
-    connectTimeout: 5000, // 5 second timeout
-    commandTimeout: 5000
+    connectTimeout: 10000,
+    commandTimeout: 10000,
+    retryStrategy: (times) => {
+      const delay = Math.min(times * 50, 2000);
+      return delay;
+    }
   };
 }
 
@@ -82,8 +93,12 @@ try {
     setex: () => Promise.reject(new Error('Redis not available')),
     ping: () => Promise.reject(new Error('Redis not available')),
     info: () => Promise.reject(new Error('Redis not available')),
+    flushdb: () => Promise.reject(new Error('Redis not available')),
     connect: () => Promise.reject(new Error('Redis not available')),
-    disconnect: () => Promise.resolve()
+    disconnect: () => Promise.resolve(),
+    on: () => {},
+    once: () => {},
+    quit: () => Promise.resolve()
   };
 }
 

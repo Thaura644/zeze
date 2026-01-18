@@ -36,7 +36,10 @@ pool.on('connect', () => {
 
 pool.on('error', (err) => {
   logger.error('Unexpected error on idle client', err);
-  process.exit(-1);
+  // Don't exit process in production for idle errors, let pool handle reconnection
+  if (process.env.NODE_ENV !== 'production') {
+    logger.warn('Non-production environment: process would have exited');
+  }
 });
 
 // Helper function to execute queries

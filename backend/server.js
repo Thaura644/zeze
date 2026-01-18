@@ -338,14 +338,6 @@ async function startServer() {
       logger.info('Redis not configured, starting without cache');
     }
 
-    // Test Redis connection (optional for startup)
-    try {
-      await redisCache.set('startup_test', 'ok', 10);
-      logger.info('Redis connection established');
-    } catch (redisError) {
-      logger.warn('Redis connection failed, starting without cache', { error: redisError.message });
-    }
-
     // Initialize WebSocket
     websocketManager.initialize(server);
     logger.info('WebSocket server initialized');
