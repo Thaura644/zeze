@@ -24,7 +24,7 @@ RUN pip3 install --no-cache-dir --break-system-packages \
 COPY package*.json ./
 
 # Install Node.js dependencies
-RUN npm ci --only=production && npm cache clean --force
+RUN npm install --omit=dev && npm cache clean --force
 
 # Create necessary directories and set permissions
 # The 'node' user already exists in the official node image
