@@ -36,10 +36,17 @@ class WebSocketManager {
         // Verify JWT token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         
-        // Check if token is blacklisted
-        const isBlacklisted = await cache.get(`blacklist_${token}`);
-        if (isBlacklisted) {
-          return next(new Error('Token has been revoked'));
+        // Check if token is blacklisted (optional - skip if Redis is unavailable)
+        try {
+          const isBlacklisted = await cache.get(`blacklist_${token}`);
+          if (isBlacklisted) {
+            return next(new Error('Token has been revoked'));
+          }
+        } catch (cacheError) {
+          logger.warn('Failed to check token blacklist in websocket, proceeding without check', {
+            cacheError: cacheError.message
+          });
+          // Continue without blacklist check if Redis is unavailable
         }
 
         socket.userId = decoded.id;

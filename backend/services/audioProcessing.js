@@ -123,23 +123,41 @@ class AudioProcessingService {
   async convertToWav(inputPath, outputPath) {
     return new Promise((resolve, reject) => {
       try {
+        logger.info(`Starting ffmpeg conversion: ${inputPath} -> ${outputPath}`);
+
         ffmpeg(inputPath)
           .toFormat('wav')
           .audioCodec('pcm_s16le')
           .audioFrequency(44100)
           .audioChannels(1) // Convert to mono for better analysis
+          .on('start', (commandLine) => {
+            logger.debug('FFmpeg command: ' + commandLine);
+          })
+          .on('progress', (progress) => {
+            logger.debug('FFmpeg progress: ' + progress.percent + '% done');
+          })
           .on('end', () => {
             logger.info(`Audio converted to WAV: ${outputPath}`);
             resolve(outputPath);
           })
           .on('error', (error) => {
-            logger.error('Audio conversion failed', { inputPath, error: error.message });
-            reject(error);
+            logger.error('Audio conversion failed', {
+              inputPath,
+              outputPath,
+              error: error.message,
+              stack: error.stack
+            });
+            reject(new Error(`FFmpeg conversion failed: ${error.message}`));
           })
           .save(outputPath);
       } catch (error) {
-        logger.error('Failed to initialize ffmpeg', { inputPath, error: error.message });
-        reject(error);
+        logger.error('Failed to initialize ffmpeg', {
+          inputPath,
+          outputPath,
+          error: error.message,
+          stack: error.stack
+        });
+        reject(new Error(`FFmpeg initialization failed: ${error.message}`));
       }
     });
   }
@@ -170,10 +188,12 @@ class AudioProcessingService {
   // Process a generic audio file
   async processAudioFile(filePath, originalName, userPreferences = {}) {
     const jobId = uuidv4();
+    let tempDir = null;
     try {
       await this.updateJobProgress(jobId, 'initialization', 5);
 
-      const tempDir = path.join(process.cwd(), 'temp', jobId);
+      tempDir = path.join(process.cwd(), 'temp', jobId);
+      logger.info(`Creating temp directory: ${tempDir}`);
       await fs.mkdir(tempDir, { recursive: true });
 
       const metadata = {
@@ -183,16 +203,35 @@ class AudioProcessingService {
       };
 
       // Get duration
+      logger.info('Getting audio duration...');
       metadata.duration = await this.getAudioDuration(filePath);
 
       await this.updateJobProgress(jobId, 'audio_conversion', 20);
       const wavPath = path.join(tempDir, 'audio.wav');
+      logger.info(`Converting to WAV: ${wavPath}`);
       await this.convertToWav(filePath, wavPath);
 
       return await this.runProcessingPipeline(jobId, wavPath, metadata, userPreferences, tempDir);
     } catch (error) {
-      logger.error('Audio file processing failed', { jobId, error: error.message });
+      logger.error('Audio file processing failed', {
+        jobId,
+        error: error.message,
+        stack: error.stack,
+        tempDir,
+        filePath,
+        originalName
+      });
       await this.updateJobProgress(jobId, 'error', null, error.message);
+
+      // Clean up temp directory if it was created
+      if (tempDir) {
+        try {
+          await this.cleanup(tempDir);
+        } catch (cleanupError) {
+          logger.warn('Failed to cleanup temp directory', { tempDir, cleanupError: cleanupError.message });
+        }
+      }
+
       throw error;
     }
   }
@@ -345,7 +384,15 @@ class AudioProcessingService {
         user_preferences: userPreferences
       };
 
-      await cache.set(`job_${jobId}`, results, 3600);
+      try {
+        await cache.set(`job_${jobId}`, results, 3600);
+      } catch (cacheError) {
+        logger.warn('Failed to cache processing results, returning results without caching', {
+          jobId,
+          cacheError: cacheError.message
+        });
+      }
+
       return results;
     } catch (error) {
       await this.cleanup(tempDir);
@@ -353,26 +400,52 @@ class AudioProcessingService {
     }
   }
 
-  // Update job progress in cache
+  // Update job progress in cache (optional - don't fail if Redis is down)
   async updateJobProgress(jobId, currentStep, progressPercentage, error = null) {
     const jobStatus = {
       job_id: jobId,
-      status: error ? 'failed' : (progressPercentage === 100 ? 'completed' : 'processing'),
-      current_step: currentStep,
+      status: error ? 'error' : 'processing',
       progress_percentage: progressPercentage,
+      current_step: currentStep,
+      estimated_remaining_seconds: this.estimateRemainingTime(currentStep),
       error: error,
       updated_at: new Date().toISOString()
     };
 
-    await cache.set(`job_status_${jobId}`, jobStatus, 3600);
+    try {
+      await cache.set(`job_status_${jobId}`, jobStatus, 3600);
+    } catch (cacheError) {
+      logger.warn('Failed to update job progress in cache, continuing without caching', {
+        jobId,
+        cacheError: cacheError.message
+      });
+    }
+
+    return jobStatus;
   }
 
   async getJobStatus(jobId) {
-    return await cache.get(`job_status_${jobId}`);
+    try {
+      return await cache.get(`job_status_${jobId}`);
+    } catch (cacheError) {
+      logger.warn('Failed to get job status from cache, returning null', {
+        jobId,
+        cacheError: cacheError.message
+      });
+      return null;
+    }
   }
 
   async getJobResults(jobId) {
-    return await cache.get(`job_${jobId}`);
+    try {
+      return await cache.get(`job_${jobId}`);
+    } catch (cacheError) {
+      logger.warn('Failed to get job results from cache, returning null', {
+        jobId,
+        cacheError: cacheError.message
+      });
+      return null;
+    }
   }
 
   async analyzeAudio(audioPath, metadata) {

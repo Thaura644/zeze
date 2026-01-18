@@ -70,13 +70,20 @@ class AuthMiddleware {
         const token = authHeader.substring(7);
         const decoded = this.verifyToken(token);
 
-        // Check if token is blacklisted
-        const isBlacklisted = await cache.get(`blacklist_${token}`);
-        if (isBlacklisted) {
-          return res.status(401).json({
-            error: 'Token has been revoked',
-            code: 'TOKEN_REVOKED'
+        // Check if token is blacklisted (optional - skip if Redis is unavailable)
+        try {
+          const isBlacklisted = await cache.get(`blacklist_${token}`);
+          if (isBlacklisted) {
+            return res.status(401).json({
+              error: 'Token has been revoked',
+              code: 'TOKEN_REVOKED'
+            });
+          }
+        } catch (cacheError) {
+          logger.warn('Failed to check token blacklist, proceeding without blacklist check', {
+            cacheError: cacheError.message
           });
+          // Continue without blacklist check if Redis is unavailable
         }
 
         // Attach user info to request
@@ -104,9 +111,18 @@ class AuthMiddleware {
           const token = authHeader.substring(7);
           const decoded = this.verifyToken(token);
           
-          // Check if token is blacklisted
-          const isBlacklisted = await cache.get(`blacklist_${token}`);
-          if (!isBlacklisted) {
+          // Check if token is blacklisted (optional - skip if Redis is unavailable)
+          try {
+            const isBlacklisted = await cache.get(`blacklist_${token}`);
+            if (!isBlacklisted) {
+              req.user = decoded;
+              req.token = token;
+            }
+          } catch (cacheError) {
+            logger.warn('Failed to check token blacklist in optional auth, proceeding without check', {
+              cacheError: cacheError.message
+            });
+            // Continue without blacklist check if Redis is unavailable
             req.user = decoded;
             req.token = token;
           }

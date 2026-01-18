@@ -1,14 +1,31 @@
 const Redis = require('ioredis');
 const logger = require('./logger');
 
-const redisConfig = {
-  host: process.env.REDIS_HOST || 'localhost',
-  port: process.env.REDIS_PORT || 6379,
-  password: process.env.REDIS_PASSWORD,
-  retryDelayOnFailover: 100,
-  maxRetriesPerRequest: 3,
-  lazyConnect: true
-};
+let redisConfig;
+
+if (process.env.REDIS_URL) {
+  // Use REDIS_URL for production (Upstash, etc.)
+  redisConfig = {
+    url: process.env.REDIS_URL,
+    retryDelayOnFailover: 100,
+    maxRetriesPerRequest: 0, // Disable retries to fail fast
+    lazyConnect: true,
+    connectTimeout: 5000, // 5 second timeout
+    commandTimeout: 5000
+  };
+} else {
+  // Fallback to individual environment variables for development
+  redisConfig = {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: process.env.REDIS_PORT || 6379,
+    password: process.env.REDIS_PASSWORD,
+    retryDelayOnFailover: 100,
+    maxRetriesPerRequest: 0, // Disable retries to fail fast
+    lazyConnect: true,
+    connectTimeout: 5000, // 5 second timeout
+    commandTimeout: 5000
+  };
+}
 
 // Create Redis client
 const redis = new Redis(redisConfig);
@@ -25,7 +42,7 @@ redis.on('close', () => {
   logger.warn('Redis connection closed');
 });
 
-// Redis helper functions
+// Redis helper functions with fallback for when Redis is unavailable
 const cache = {
   // Set cache with TTL
   set: async (key, value, ttl = 3600) => {
@@ -34,8 +51,10 @@ const cache = {
       await redis.setex(key, ttl, serializedValue);
       logger.debug(`Cached data for key: ${key}`);
     } catch (error) {
-      logger.error(`Cache set error for key: ${key}`, error);
-      throw error;
+      logger.warn(`Cache set failed for key: ${key}, continuing without caching`, {
+        error: error.message
+      });
+      // Don't throw error - allow operation to continue
     }
   },
 
@@ -46,7 +65,9 @@ const cache = {
       if (value === null) return null;
       return JSON.parse(value);
     } catch (error) {
-      logger.error(`Cache get error for key: ${key}`, error);
+      logger.warn(`Cache get failed for key: ${key}, returning null`, {
+        error: error.message
+      });
       return null;
     }
   },
@@ -57,8 +78,10 @@ const cache = {
       await redis.del(key);
       logger.debug(`Cache deleted for key: ${key}`);
     } catch (error) {
-      logger.error(`Cache delete error for key: ${key}`, error);
-      throw error;
+      logger.warn(`Cache delete failed for key: ${key}, continuing`, {
+        error: error.message
+      });
+      // Don't throw error - allow operation to continue
     }
   },
 
@@ -68,8 +91,10 @@ const cache = {
       await redis.flushdb();
       logger.info('Cache cleared');
     } catch (error) {
-      logger.error('Cache clear error', error);
-      throw error;
+      logger.warn('Cache clear failed, continuing', {
+        error: error.message
+      });
+      // Don't throw error - allow operation to continue
     }
   }
 };

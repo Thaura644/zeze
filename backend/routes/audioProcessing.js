@@ -57,35 +57,69 @@ router.post('/process-audio',
         userPreferences
       );
 
-      // Create song entry in database
+      // Create song entry in database (optional - don't fail if database is unavailable)
       if (results.status === 'completed') {
-        const songData = {
-          title: results.metadata.title,
-          artist: results.metadata.artist,
-          duration_seconds: Math.round(results.metadata.duration),
-          original_key: results.key.key,
-          tempo_bpm: results.tempo.bpm,
-          chord_progression: results.chords,
-          overall_difficulty: results.analysis.difficulty || 3,
-          processing_status: 'completed'
-        };
+        try {
+          const songData = {
+            title: results.metadata.title,
+            artist: results.metadata.artist,
+            duration_seconds: Math.round(results.metadata.duration),
+            original_key: results.key.key,
+            tempo_bpm: results.tempo.bpm,
+            chord_progression: results.chords,
+            overall_difficulty: results.analysis.difficulty || 3,
+            processing_status: 'completed'
+          };
 
-        const song = await songService.createSong(songData);
-        results.results = {
-          song_id: song.song_id,
-          metadata: results.metadata,
-          chords: results.chords,
-          processing_completed: true
-        };
+          const song = await songService.createSong(songData);
+          results.results = {
+            song_id: song.song_id,
+            metadata: results.metadata,
+            chords: results.chords,
+            processing_completed: true
+          };
+        } catch (dbError) {
+          logger.warn('Failed to create song entry in database, returning results without DB storage', { 
+            error: dbError.message 
+          });
+          // Still return the processing results even if DB storage fails
+          results.results = {
+            metadata: results.metadata,
+            chords: results.chords,
+            processing_completed: true,
+            database_storage_failed: true
+          };
+        }
       }
 
       res.json(results);
     } catch (error) {
-      logger.error('Audio processing failed', { error: error.message });
-      res.status(500).json({
-        error: 'Failed to process audio file',
-        code: 'PROCESSING_ERROR',
-        message: error.message
+      logger.error('Audio processing failed', { error: error.message, stack: error.stack });
+      
+      // Handle specific error types
+      let statusCode = 500;
+      let errorCode = 'PROCESSING_ERROR';
+      let errorMessage = 'Failed to process audio file';
+      
+      if (error.message && error.message.includes('Only audio files')) {
+        statusCode = 400;
+        errorCode = 'INVALID_FILE_TYPE';
+        errorMessage = error.message;
+      } else if (error.message && error.message.includes('File too large')) {
+        statusCode = 413;
+        errorCode = 'FILE_TOO_LARGE';
+        errorMessage = 'Audio file exceeds maximum size limit';
+      } else if (error.message && error.message.includes('ENOENT')) {
+        statusCode = 500;
+        errorCode = 'FILE_NOT_FOUND';
+        errorMessage = 'Uploaded file not found';
+      }
+      
+      res.status(statusCode).json({
+        error: errorMessage,
+        code: errorCode,
+        message: error.message,
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });
     }
   }
