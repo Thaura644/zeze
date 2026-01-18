@@ -4,15 +4,38 @@ const logger = require('./logger');
 let redisConfig;
 
 if (process.env.REDIS_URL) {
-  // Use REDIS_URL for production (Upstash, etc.)
-  redisConfig = {
-    url: process.env.REDIS_URL,
-    retryDelayOnFailover: 100,
-    maxRetriesPerRequest: 0, // Disable retries to fail fast
-    lazyConnect: true,
-    connectTimeout: 5000, // 5 second timeout
-    commandTimeout: 5000
-  };
+  // Parse Redis URL manually to avoid parsing issues
+  try {
+    const url = new URL(process.env.REDIS_URL);
+    redisConfig = {
+      host: url.hostname,
+      port: parseInt(url.port) || 6379,
+      password: url.password,
+      username: url.username || 'default',
+      tls: url.protocol === 'rediss:' ? {} : false,
+      retryDelayOnFailover: 100,
+      maxRetriesPerRequest: 0, // Disable retries to fail fast
+      lazyConnect: true,
+      connectTimeout: 5000, // 5 second timeout
+      commandTimeout: 5000,
+      // Additional options for Upstash compatibility
+      enableReadyCheck: false,
+      keepAlive: false
+    };
+    logger.info('Parsed Redis URL successfully', { host: url.hostname, port: url.port });
+  } catch (urlError) {
+    logger.error('Failed to parse Redis URL, falling back to no Redis', urlError);
+    // Create a dummy config that will fail gracefully
+    redisConfig = {
+      host: 'invalid.host',
+      port: 6379,
+      retryDelayOnFailover: 100,
+      maxRetriesPerRequest: 0,
+      lazyConnect: true,
+      connectTimeout: 1000,
+      commandTimeout: 1000
+    };
+  }
 } else {
   // Fallback to individual environment variables for development
   redisConfig = {
@@ -27,20 +50,42 @@ if (process.env.REDIS_URL) {
   };
 }
 
-// Create Redis client
-const redis = new Redis(redisConfig);
+// Create Redis client with better error handling
+let redis;
 
-redis.on('connect', () => {
-  logger.info('Connected to Redis');
-});
+try {
+  redis = new Redis(redisConfig);
 
-redis.on('error', (err) => {
-  logger.error('Redis connection error', err);
-});
+  redis.on('connect', () => {
+    logger.info('Connected to Redis');
+  });
 
-redis.on('close', () => {
-  logger.warn('Redis connection closed');
-});
+  redis.on('error', (err) => {
+    logger.error('Redis connection error', err);
+  });
+
+  redis.on('close', () => {
+    logger.warn('Redis connection closed');
+  });
+
+  redis.on('ready', () => {
+    logger.info('Redis client ready');
+  });
+
+} catch (error) {
+  logger.error('Failed to create Redis client', error);
+  // Create a dummy client that fails gracefully
+  redis = {
+    set: () => Promise.reject(new Error('Redis not available')),
+    get: () => Promise.reject(new Error('Redis not available')),
+    del: () => Promise.reject(new Error('Redis not available')),
+    setex: () => Promise.reject(new Error('Redis not available')),
+    ping: () => Promise.reject(new Error('Redis not available')),
+    info: () => Promise.reject(new Error('Redis not available')),
+    connect: () => Promise.reject(new Error('Redis not available')),
+    disconnect: () => Promise.resolve()
+  };
+}
 
 // Redis helper functions with fallback for when Redis is unavailable
 const cache = {
