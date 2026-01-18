@@ -46,20 +46,24 @@ const validateYouTubeProcessing = [
   handleValidationErrors
 ];
 
-// Job status validation
+// Job status validation - allow UUID or custom job ID formats
 const validateJobStatus = [
   param('jobId')
-    .isUUID()
-    .withMessage('Valid job ID is required'),
+    .notEmpty()
+    .withMessage('Job ID is required')
+    .matches(/^[a-zA-Z0-9_-]+$/)
+    .withMessage('Invalid job ID format'),
   
   handleValidationErrors
 ];
 
-// Song results validation
+// Song results validation - allow UUID or custom job ID formats
 const validateSongResults = [
   param('jobId')
-    .isUUID()
-    .withMessage('Valid job ID is required'),
+    .notEmpty()
+    .withMessage('Job ID is required')
+    .matches(/^[a-zA-Z0-9_-]+$/)
+    .withMessage('Invalid job ID format'),
   
   handleValidationErrors
 ];

@@ -612,7 +612,10 @@ class ApiService {
   // Version check endpoint
   async checkAppVersion(): Promise<ApiResponse<any>> {
     try {
-      const response = await this.api.post('/version/check');
+      // Use a shorter timeout for version check to not block the app
+      const response = await this.api.post('/version/check', {}, {
+        timeout: 10000, // 10 second timeout for version check
+      });
       
       // Ensure we have a proper response structure
       if (response.data && typeof response.data === 'object') {
@@ -621,10 +624,15 @@ class ApiService {
           error: undefined
         };
       } else {
-        throw new Error('Invalid response structure');
+        // If no valid data, return null but don't treat as error
+        return {
+          data: null,
+          error: undefined
+        };
       }
     } catch (error: any) {
-      console.error('App version check error:', error);
+      // Log but don't throw - version check failures shouldn't block the app
+      console.warn('App version check error (non-blocking):', error?.message || error);
       return {
         data: null,
         error: {

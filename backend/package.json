@@ -42,7 +42,8 @@
     "uuid": "^9.0.0",
     "winston": "^3.9.0",
     "ws": "^8.13.0",
-    "ytdl-core": "^4.11.4"
+    "@distube/ytdl-core": "^4.14.4",
+    "yt-dlp-exec": "^1.0.2"
   },
   "devDependencies": {
     "eslint": "^8.42.0",

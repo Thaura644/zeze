@@ -25,6 +25,7 @@ export interface Song {
   chords: Chord[];
   difficulty: number;
   processedAt?: string;
+  audioUrl?: string;
 }
 
 export interface Technique {

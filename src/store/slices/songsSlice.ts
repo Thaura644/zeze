@@ -28,7 +28,12 @@ export const processYouTubeUrl = createAsyncThunk(
   'songs/processYouTubeUrl',
   async (youtubeUrl: string, { rejectWithValue, dispatch }) => {
     try {
-      const initResponse = await ApiService.processYouTubeUrl(youtubeUrl);
+      // Pass default user preferences to avoid undefined errors
+      const defaultPreferences = {
+        targetKey: 'C',
+        difficultyLevel: 3,
+      };
+      const initResponse = await ApiService.processYouTubeUrl(youtubeUrl, defaultPreferences);
       const jobId = initResponse.data?.job_id;
 
       if (!jobId) {
@@ -52,7 +57,12 @@ export const processAudioFile = createAsyncThunk(
   'songs/processAudioFile',
   async (file: any, { rejectWithValue, dispatch }) => {
     try {
-      const initResponse = await ApiService.uploadAudio(file);
+      // Pass default user preferences to avoid undefined errors
+      const defaultPreferences = {
+        targetKey: 'C',
+        difficultyLevel: 3,
+      };
+      const initResponse = await ApiService.uploadAudio(file, defaultPreferences);
       const jobId = initResponse.data?.job_id;
 
       if (!jobId) {

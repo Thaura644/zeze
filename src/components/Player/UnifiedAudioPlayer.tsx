@@ -41,17 +41,18 @@ interface UnifiedAudioPlayerProps {
   enablePracticeMode?: boolean;
 }
 
-const UnifiedAudioPlayer: React.FC<UnifiedAudioPlayerProps> = ({
-  track,
-  showTablature = true,
-  showChords = true,
-  showSections = true,
-  onClose,
-  onTrackChange,
-  playlist = [],
-  enableRecording = true,
-  enablePracticeMode = true,
-}) => {
+const UnifiedAudioPlayer = (props: UnifiedAudioPlayerProps) => {
+  const {
+    track,
+    showTablature = true,
+    showChords = true,
+    showSections = true,
+    onClose,
+    onTrackChange,
+    playlist = [],
+    enableRecording = true,
+    enablePracticeMode = true,
+  } = props;
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
@@ -113,14 +114,21 @@ const UnifiedAudioPlayer: React.FC<UnifiedAudioPlayerProps> = ({
 
   const loadAudio = async () => {
     try {
+      // Check if audio URL is available
+      if (!track.audioUrl || track.audioUrl.trim() === '') {
+        console.log('No audio URL available for this track');
+        setIsLoading(false);
+        return;
+      }
+
       setIsLoading(true);
-      
+
       if (sound) {
         await sound.unloadAsync();
       }
-      
+
       console.log('Loading audio from:', track.audioUrl);
-      
+
       const { sound: newSound } = await Audio.Sound.createAsync(
         { uri: track.audioUrl },
         {
@@ -129,7 +137,7 @@ const UnifiedAudioPlayer: React.FC<UnifiedAudioPlayerProps> = ({
           volume: volume,
         }
       );
-      
+
       newSound.setOnPlaybackStatusUpdate(onPlaybackStatusUpdate);
       setSound(newSound);
       setIsLoading(false);
@@ -345,8 +353,23 @@ const UnifiedAudioPlayer: React.FC<UnifiedAudioPlayerProps> = ({
     </View>
   );
 
-  const renderAudioControls = () => (
-    <View style={styles.audioControls}>
+  const renderAudioControls = () => {
+    // If no audio URL is available, show a message instead of controls
+    if (!track.audioUrl || track.audioUrl.trim() === '') {
+      return (
+        <View style={styles.audioControls}>
+          <View style={styles.noAudioContainer}>
+            <Text style={styles.noAudioText}>🎵 Audio playback not available</Text>
+            <Text style={styles.noAudioSubtext}>
+              This song has been analyzed but audio playback requires additional setup
+            </Text>
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.audioControls}>
       {/* Progress Bar */}
       <View style={styles.progressContainer}>
         <Slider
@@ -428,6 +451,7 @@ const UnifiedAudioPlayer: React.FC<UnifiedAudioPlayerProps> = ({
       </View>
     </View>
   );
+  };
 
   const renderSections = () => {
     if (!showSections || !track.sections || track.sections.length === 0) return null;
@@ -581,7 +605,7 @@ const UnifiedAudioPlayer: React.FC<UnifiedAudioPlayerProps> = ({
       </ScrollView>
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -619,12 +643,11 @@ const styles = StyleSheet.create({
   },
   headerActions: {
     alignItems: 'flex-end',
-    gap: SPACING.sm,
   },
   tempoInfo: {
     ...TYPOGRAPHY.caption,
     color: COLORS.primary,
-    backgroundColor: COLORS.primaryLight + '20',
+    backgroundColor: COLORS.primaryLight20,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
     borderRadius: BORDER_RADIUS.sm,
@@ -632,7 +655,7 @@ const styles = StyleSheet.create({
   keyInfo: {
     ...TYPOGRAPHY.caption,
     color: COLORS.secondary,
-    backgroundColor: COLORS.secondaryLight + '20',
+    backgroundColor: COLORS.secondaryLight20,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
     borderRadius: BORDER_RADIUS.sm,

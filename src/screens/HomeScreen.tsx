@@ -151,6 +151,8 @@ const HomeScreen: React.FC = () => {
           })) || [],
           difficulty: songData.metadata.overall_difficulty,
           processedAt: new Date().toISOString(),
+          // For now, audio playback is not available for processed songs
+          audioUrl: '',
         };
         dispatch({ type: 'player/loadSong', payload: newSong });
         navigation.navigate('Player');

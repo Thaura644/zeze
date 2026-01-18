@@ -7,8 +7,10 @@ export const COLORS = {
     primary: '#FF6B6B',      // Coral Red (Energetic)
     primaryDark: '#EE5253',
     primaryLight: '#FF8A8A',
+    primaryLight20: '#FF8A8A33',
     secondary: '#4ECDC4',    // Turquoise (Fresh)
     secondaryLight: '#6EE7D7',
+    secondaryLight20: '#6EE7D733',
     accent: '#FFE66D',       // Sun Yellow (Highlights)
     warning: '#FFA726',
 
@@ -66,16 +68,16 @@ export const SHADOWS = {
 export const TYPOGRAPHY = {
     h1: {
         fontSize: 40,
-        fontWeight: 'bold' as const,
+        fontWeight: 'bold',
         letterSpacing: -1,
     },
     h2: {
         fontSize: 24,
-        fontWeight: 'bold' as const,
+        fontWeight: 'bold',
     },
     h3: {
         fontSize: 20,
-        fontWeight: '600' as const,
+        fontWeight: '600',
     },
     body: {
         fontSize: 16,
@@ -89,6 +91,6 @@ export const TYPOGRAPHY = {
     },
     button: {
         fontSize: 16,
-        fontWeight: 'bold' as const,
+        fontWeight: 'bold',
     },
 };

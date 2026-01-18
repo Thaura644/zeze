@@ -61,10 +61,25 @@ class VersionManager {
     try {
       const response = await ApiService.checkAppVersion();
       
-      console.log('API Response:', response);
+      console.log('API Response:', JSON.stringify(response));
       
-      if (response.error || !response.data) {
-        throw new Error(response.error?.message || 'No data received from server');
+      // Handle network errors gracefully - don't block the app
+      if (response.error) {
+        const errorMessage = response.error?.message || 'Unknown error';
+        // Check if it's a network error
+        if (errorMessage.includes('Network Error') || errorMessage.includes('timeout') || errorMessage.includes('ECONNREFUSED')) {
+          console.warn('Version check skipped due to network error:', errorMessage);
+          // Treat as "current" - don't block the app for network issues
+          options.onUpdateNotAvailable?.();
+          return null;
+        }
+        throw new Error(errorMessage);
+      }
+      
+      if (!response.data) {
+        console.warn('No data received from version check, assuming current');
+        options.onUpdateNotAvailable?.();
+        return null;
       }
 
       const versionData: VersionCheckResponse = response.data;
@@ -92,10 +107,21 @@ class VersionManager {
         return versionData;
       }
 
+      // Default: assume current version is fine
+      options.onUpdateNotAvailable?.();
       return versionData;
 
-    } catch (error) {
-      console.error('Version check failed:', error);
+    } catch (error: any) {
+      const errorMessage = error?.message || 'Unknown error';
+      console.warn('Version check failed:', errorMessage);
+      
+      // For network errors, don't call onError - just silently continue
+      if (errorMessage.includes('Network Error') || errorMessage.includes('timeout') || errorMessage.includes('ECONNREFUSED')) {
+        console.warn('Version check skipped due to network issues');
+        options.onUpdateNotAvailable?.();
+        return null;
+      }
+      
       options.onError?.(error as Error);
       return null;
     }

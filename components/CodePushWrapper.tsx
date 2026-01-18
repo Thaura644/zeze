@@ -8,8 +8,8 @@ interface CodePushWrapperProps {
 }
 
 const CodePushWrapper: React.FC<CodePushWrapperProps> = ({ children }) => {
-  const [updateStatus, setUpdateStatus] = useState<string>('checking');
-  const [updateMessage, setUpdateMessage] = useState<string>('Checking for updates...');
+  const [updateStatus, setUpdateStatus] = useState<string>('current'); // Default to 'current' to not block app
+  const [updateMessage, setUpdateMessage] = useState<string>('');
 
   useEffect(() => {
     const versionManager = VersionManager.getInstance();
@@ -52,14 +52,11 @@ const CodePushWrapper: React.FC<CodePushWrapperProps> = ({ children }) => {
             });
           },
           onError: (error) => {
-            setUpdateStatus('error');
-            setUpdateMessage('Update check failed');
-            console.error('Version check error:', error);
-            Toast.show({
-              type: 'error',
-              text1: 'Update Failed',
-              text2: 'Could not check for updates',
-            });
+            // On error, don't block the app - just log and continue
+            setUpdateStatus('current');
+            setUpdateMessage('');
+            console.warn('Version check error (non-blocking):', error?.message || error);
+            // Don't show toast for network errors - it's not critical
           }
         });
 
@@ -67,22 +64,30 @@ const CodePushWrapper: React.FC<CodePushWrapperProps> = ({ children }) => {
           console.log('Version check completed:', result);
           setUpdateStatus('completed');
           setUpdateMessage('');
+        } else {
+          // If no result (network error), just continue with the app
+          setUpdateStatus('current');
+          setUpdateMessage('');
         }
 
       } catch (error) {
-        console.error('Version check failed:', error);
-        setUpdateStatus('error');
-        setUpdateMessage('Failed to check for updates');
+        // On any error, don't block the app
+        console.warn('Version check failed (non-blocking):', error);
+        setUpdateStatus('current');
+        setUpdateMessage('');
       }
     };
 
-    // Initial check
-    checkVersion();
+    // Initial check with a small delay to not block app startup
+    const initialTimeout = setTimeout(checkVersion, 2000);
 
     // Schedule periodic checks (every 6 hours)
     const interval = setInterval(checkVersion, 6 * 60 * 60 * 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialTimeout);
+      clearInterval(interval);
+    };
   }, []);
 
   // Show loading overlay during critical updates
@@ -110,7 +115,7 @@ const CodePushWrapper: React.FC<CodePushWrapperProps> = ({ children }) => {
     );
   }
 
-  // Normal app rendering for all other states
+  // Normal app rendering for all other states (including 'checking', 'error', 'current', 'completed')
   return <>{children}</>;
 };
 
