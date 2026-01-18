@@ -17,6 +17,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import GuitarLogo from '@/components/GuitarLogo';
 import { Provider, useDispatch } from 'react-redux';
 import Toast from 'react-native-toast-message';
+import CodePushWrapper from './components/CodePushWrapper';
 
 import { store } from '@/store';
 import HomeScreen from '@/screens/HomeScreen';
@@ -295,6 +296,8 @@ const App: React.FC = () => {
     checkAuth();
   }, []);
 
+
+
   if (checkingAuth) {
     return (
       <View style={[styles.container, styles.centered]}>
@@ -306,23 +309,25 @@ const App: React.FC = () => {
   return (
     <SafeAreaProvider>
       <Provider store={store}>
-        {!isLoggedIn ? (
-          <LoginScreen onLogin={() => setIsLoggedIn(true)} />
-        ) : (
-          <NavigationContainer theme={{
-            dark: true,
-            colors: {
-              primary: COLORS.primary,
-              background: COLORS.background,
-              card: COLORS.surface,
-              text: COLORS.text,
-              border: COLORS.glassBorder,
-              notification: COLORS.secondary,
-            }
-          }}>
-            <AuthenticatedApp />
-          </NavigationContainer>
-        )}
+        <CodePushWrapper>
+          {!isLoggedIn ? (
+            <LoginScreen onLogin={() => setIsLoggedIn(true)} />
+          ) : (
+            <NavigationContainer theme={{
+              dark: true,
+              colors: {
+                primary: COLORS.primary,
+                background: COLORS.background,
+                card: COLORS.surface,
+                text: COLORS.text,
+                border: COLORS.glassBorder,
+                notification: COLORS.secondary,
+              }
+            }}>
+              <AuthenticatedApp />
+            </NavigationContainer>
+          )}
+        </CodePushWrapper>
       </Provider>
       <Toast />
     </SafeAreaProvider>

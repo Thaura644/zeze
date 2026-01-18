@@ -34,6 +34,7 @@ const userRoutes = require('./routes/users');
 const practiceRoutes = require('./routes/practice');
 const songRoutes = require('./routes/songs');
 const exerciseRoutes = require('./routes/exercises');
+const versionRoutes = require('./routes/version');
 
 // Import WebSocket manager
 const websocketManager = require('./websocket/websocketManager');
@@ -194,6 +195,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/practice', practiceRoutes);
 app.use('/api/songs', songRoutes);
 app.use('/api/exercises', exerciseRoutes);
+app.use('/api/version', versionRoutes);
 
 // API documentation endpoint
 app.get('/api', (req, res) => {

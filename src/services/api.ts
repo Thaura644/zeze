@@ -1,5 +1,6 @@
 import axios, { AxiosResponse, AxiosError } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001/api';
 
@@ -152,13 +153,18 @@ class ApiService {
       },
     });
 
-    // Request interceptor for adding auth token
+    // Request interceptor for adding auth token and version headers
     this.api.interceptors.request.use(
       async (config: any) => {
         const { accessToken } = await this.getStoredTokens();
         if (accessToken) {
           config.headers.Authorization = `Bearer ${accessToken}`;
         }
+        
+        // Add version headers for backend checking
+        config.headers['platform'] = this.getPlatform();
+        config.headers['app_version'] = await this.getCurrentVersion();
+        
         return config;
       },
       (error: AxiosError) => {
@@ -585,6 +591,42 @@ class ApiService {
       return response.data;
     } catch (error: any) {
       console.error('Get practice stats error:', error);
+      throw error;
+    }
+  }
+
+  private getPlatform(): string {
+    return Platform.OS;
+  }
+
+  private async getCurrentVersion(): Promise<string> {
+    try {
+      // Get app version from package.json or constants
+      return '1.0.0'; // This should match your app version
+    } catch (error) {
+      console.warn('Could not get current version, using default');
+      return '1.0.0';
+    }
+  }
+
+  // Version check endpoint
+  async checkAppVersion(): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.api.post('/version/check');
+      return response.data;
+    } catch (error: any) {
+      console.error('App version check error:', error);
+      throw error;
+    }
+  }
+
+  // Version info endpoint
+  async getVersionInfo(): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.api.get('/version/info');
+      return response.data;
+    } catch (error: any) {
+      console.error('Get version info error:', error);
       throw error;
     }
   }
