@@ -288,10 +288,29 @@ router.post('/process-youtube',
         stack: error.stack
       });
       
-      res.status(500).json({
-        error: 'Failed to process YouTube URL',
-        code: 'PROCESSING_ERROR',
-        message: error.message,
+      // Determine appropriate status code based on error type
+      let statusCode = 500;
+      let errorCode = 'PROCESSING_ERROR';
+      let errorMessage = error.message || 'Failed to process YouTube URL';
+      
+      // Handle specific error types
+      if (error.message && error.message.includes('Invalid YouTube URL')) {
+        statusCode = 400;
+        errorCode = 'INVALID_URL';
+      } else if (error.message && error.message.includes('Video not found')) {
+        statusCode = 404;
+        errorCode = 'VIDEO_NOT_FOUND';
+      } else if (error.message && error.message.includes('Age-restricted')) {
+        statusCode = 403;
+        errorCode = 'RESTRICTED_VIDEO';
+        errorMessage = 'This video is age-restricted and cannot be processed';
+      }
+      
+      res.status(statusCode).json({
+        error: errorMessage,
+        code: errorCode,
+        message: errorMessage,
+        retry_after: statusCode === 429 ? 60 : undefined,
         details: process.env.NODE_ENV === 'development' ? {
           stack: error.stack
         } : undefined

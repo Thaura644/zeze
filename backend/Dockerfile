@@ -4,6 +4,10 @@ FROM node:18-slim
 # Set working directory
 WORKDIR /app
 
+# Set environment variables to prevent update checks and warnings
+ENV YTDL_NO_UPDATE=1
+ENV NODE_ENV=production
+
 # Install system dependencies needed for audio processing
 RUN apt-get update && apt-get install -y \
     python3 \

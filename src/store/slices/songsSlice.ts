@@ -47,7 +47,20 @@ export const processYouTubeUrl = createAsyncThunk(
 
       return await pollJobStatus(jobId, dispatch);
     } catch (error: any) {
-      const errorMessage = error?.response?.data?.message || error.message || 'Failed to process YouTube URL';
+      const statusCode = error?.response?.status;
+      let errorMessage = error?.response?.data?.message || error.message || 'Failed to process YouTube URL';
+      
+      // Handle specific status codes
+      if (statusCode === 429) {
+        errorMessage = 'Rate limited. Please wait before trying again.';
+      } else if (statusCode === 403) {
+        errorMessage = 'Access forbidden. The video may be restricted.';
+      } else if (statusCode === 500) {
+        errorMessage = 'Server error. Please try again later.';
+      } else if (statusCode) {
+        errorMessage = `${statusCode}: ${errorMessage}`;
+      }
+      
       return rejectWithValue(errorMessage);
     }
   }
@@ -76,7 +89,20 @@ export const processAudioFile = createAsyncThunk(
 
       return await pollJobStatus(jobId, dispatch);
     } catch (error: any) {
-      const errorMessage = error?.response?.data?.message || error.message || 'Failed to process audio file';
+      const statusCode = error?.response?.status;
+      let errorMessage = error?.response?.data?.message || error.message || 'Failed to process audio file';
+      
+      // Handle specific status codes
+      if (statusCode === 429) {
+        errorMessage = 'Rate limited. Please wait before trying again.';
+      } else if (statusCode === 403) {
+        errorMessage = 'Access forbidden. Please check your permissions.';
+      } else if (statusCode === 500) {
+        errorMessage = 'Server error. Please try again later.';
+      } else if (statusCode) {
+        errorMessage = `${statusCode}: ${errorMessage}`;
+      }
+      
       return rejectWithValue(errorMessage);
     }
   }
@@ -86,33 +112,52 @@ const pollJobStatus = async (jobId: string, dispatch: any) => {
   // Initial polling state
   dispatch(updateProcessingStatus({ jobId, status: 'processing', progress: 0 }));
 
-  // Polling logic
+  // Polling logic with retry on transient errors
   let pollCount = 0;
+  let consecutiveErrors = 0;
+  const MAX_CONSECUTIVE_ERRORS = 3;
+  
   while (pollCount < MAX_POLLS) {
-    const statusResponse = await ApiService.getProcessingStatus(jobId);
-    const data = statusResponse.data;
+    try {
+      const statusResponse = await ApiService.getProcessingStatus(jobId);
+      const data = statusResponse.data;
 
-    if (!data) throw new Error('Failed to get processing status');
+      if (!data) throw new Error('Failed to get processing status');
 
-    dispatch(updateProcessingStatus({
-      jobId,
-      status: data.status as any,
-      progress: data.progress_percentage
-    }));
+      // Reset error counter on successful response
+      consecutiveErrors = 0;
 
-    if (data.status === 'completed') {
-      // If completed, get the final results
-      const resultsResponse = await ApiService.getSongResults(jobId);
-      return resultsResponse.data;
+      dispatch(updateProcessingStatus({
+        jobId,
+        status: data.status as any,
+        progress: data.progress_percentage
+      }));
+
+      if (data.status === 'completed') {
+        // If completed, get the final results
+        const resultsResponse = await ApiService.getSongResults(jobId);
+        return resultsResponse.data;
+      }
+
+      if (data.status === 'failed') {
+        throw new Error(data.error || 'Processing failed');
+      }
+
+      // Wait before next poll
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+      pollCount++;
+    } catch (error: any) {
+      consecutiveErrors++;
+      
+      // Only retry on specific transient errors
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS || error.message.includes('Processing timed out')) {
+        throw error;
+      }
+      
+      // Wait longer before retrying after an error
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL * 2));
+      pollCount++;
     }
-
-    if (data.status === 'failed') {
-      throw new Error(data.error || 'Processing failed');
-    }
-
-    // Wait before next poll
-    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
-    pollCount++;
   }
 
   throw new Error('Processing timed out. Please check back later.');
