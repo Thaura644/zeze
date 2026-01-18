@@ -1,5 +1,4 @@
 const ytdl = require('@distube/ytdl-core');
-const ytDlpExec = require('yt-dlp-exec');
 const ffmpeg = require('fluent-ffmpeg');
 const path = require('path');
 const fs = require('fs').promises;
@@ -120,41 +119,12 @@ class AudioProcessingService {
     return hours * 3600 + minutes * 60 + seconds;
   }
 
-  // Download audio from YouTube using multiple methods
+  // Download audio from YouTube using @distube/ytdl-core
   async downloadYouTubeAudio(videoId, outputPath) {
-    const errors = [];
-
-    // Method 1: Try @distube/ytdl-core first (most compatible)
-    try {
-      logger.info('Attempting download with @distube/ytdl-core', { videoId });
-      await this.downloadWithYtdlCore(videoId, outputPath);
-      logger.info('Successfully downloaded with @distube/ytdl-core', { videoId });
-      return outputPath;
-    } catch (ytdlError) {
-      errors.push({ method: 'ytdl-core', error: ytdlError.message });
-      logger.warn('ytdl-core download failed', { videoId, error: ytdlError.message });
-    }
-
-    // Method 2: Try yt-dlp (more reliable but requires binary)
-    try {
-      logger.info('Attempting download with yt-dlp', { videoId });
-      await this.downloadWithYtDlp(videoId, outputPath);
-      logger.info('Successfully downloaded with yt-dlp', { videoId });
-      return outputPath;
-    } catch (ytDlpError) {
-      errors.push({ method: 'yt-dlp', error: ytDlpError.message });
-      logger.warn('yt-dlp download failed', { videoId, error: ytDlpError.message });
-    }
-
-    // All methods failed
-    const errorMessage = `All download methods failed: ${errors.map(e => `${e.method}: ${e.error}`).join('; ')}`;
-    logger.error('YouTube download failed completely', { videoId, errors });
-    throw new Error(errorMessage);
-  }
-
-  async downloadWithYtdlCore(videoId, outputPath) {
     return new Promise((resolve, reject) => {
       try {
+        logger.info('Attempting download with @distube/ytdl-core', { videoId });
+        
         const stream = ytdl(videoId, {
           quality: 'highestaudio',
           filter: 'audioonly'
@@ -175,7 +145,7 @@ class AudioProcessingService {
         stream.pipe(writeStream);
 
         writeStream.on('finish', () => {
-          logger.info(`YouTube audio downloaded with ytdl-core: ${videoId}`);
+          logger.info(`YouTube audio downloaded with @distube/ytdl-core: ${videoId}`);
           resolve(outputPath);
         });
       } catch (error) {
@@ -183,32 +153,6 @@ class AudioProcessingService {
         reject(error);
       }
     });
-  }
-
-  async downloadWithYtDlp(videoId, outputPath) {
-    try {
-      const url = `https://www.youtube.com/watch?v=${videoId}`;
-      
-      await ytDlpExec(url, {
-        extractAudio: true,
-        audioFormat: 'mp3',
-        audioQuality: 0, // Best quality
-        output: outputPath,
-        noCheckCertificates: true,
-        noWarnings: true,
-        preferFreeFormats: true,
-        addHeader: [
-          'referer:youtube.com',
-          'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        ]
-      });
-
-      logger.info(`YouTube audio downloaded with yt-dlp: ${videoId}`);
-      return outputPath;
-    } catch (error) {
-      logger.error('yt-dlp download failed', { videoId, error: error.message });
-      throw error;
-    }
   }
 
   // Convert audio to WAV format for processing
