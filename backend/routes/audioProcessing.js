@@ -187,6 +187,12 @@ router.post('/process-youtube',
     try {
       const { youtube_url, user_preferences } = req.body;
 
+      logger.info('YouTube processing request received', {
+        userId: req.user?.id,
+        youtubeUrl: youtube_url,
+        userPreferences
+      });
+
       // Check if song already exists
       const videoId = audioProcessingService.extractVideoId(youtube_url);
       if (videoId) {

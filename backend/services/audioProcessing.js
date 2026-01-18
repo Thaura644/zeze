@@ -190,6 +190,12 @@ class AudioProcessingService {
     const jobId = uuidv4();
     let tempDir = null;
     try {
+      logger.info(`Starting audio processing job ${jobId}`, {
+        filePath,
+        originalName,
+        userPreferences
+      });
+
       await this.updateJobProgress(jobId, 'initialization', 5);
 
       tempDir = path.join(process.cwd(), 'temp', jobId);
@@ -398,6 +404,24 @@ class AudioProcessingService {
       await this.cleanup(tempDir);
       throw error;
     }
+  }
+
+  // Estimate remaining time based on current step
+  estimateRemainingTime(currentStep) {
+    const timeEstimates = {
+      'initialization': 5,
+      'audio_conversion': 15,
+      'sample_extraction': 10,
+      'audio_analysis': 20,
+      'chord_detection': 15,
+      'tempo_detection': 10,
+      'key_detection': 10,
+      'tab_generation': 5,
+      'completion': 0,
+      'error': 0
+    };
+
+    return timeEstimates[currentStep] || 30; // Default 30 seconds
   }
 
   // Update job progress in cache (optional - don't fail if Redis is down)
