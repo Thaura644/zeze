@@ -1,5 +1,4 @@
 import { Platform } from 'react-native';
-import CodePush from 'react-native-code-push';
 import ApiService from '../src/services/api';
 
 interface VersionCheckResponse {
@@ -62,8 +61,10 @@ class VersionManager {
     try {
       const response = await ApiService.checkAppVersion();
       
-      if (response.error) {
-        throw new Error(response.error.message);
+      console.log('API Response:', response);
+      
+      if (response.error || !response.data) {
+        throw new Error(response.error?.message || 'No data received from server');
       }
 
       const versionData: VersionCheckResponse = response.data;
@@ -106,27 +107,15 @@ class VersionManager {
   ): Promise<void> {
     try {
       if (deploymentKey) {
-        // Configure CodePush with deployment key from server
-        console.log('Configuring CodePush with deployment key from server');
+        // Store deployment key for later CodePush configuration
+        console.log('CodePush deployment key available:', deploymentKey);
       }
 
       options.onCodePushAvailable?.();
 
-      // Trigger CodePush sync
-      const syncStatus = await CodePush.sync({
-        installMode: CodePush.InstallMode.IMMEDIATE,
-        updateDialog: {
-          appendReleaseDescription: true,
-          descriptionPrefix: '\n\nChanges:\n',
-          title: 'Update Available',
-          mandatoryUpdateMessage: 'An important update is available and must be installed.',
-          mandatoryContinueButtonLabel: 'Install Now',
-          optionalIgnoreButtonLabel: 'Skip',
-          optionalInstallButtonLabel: 'Install',
-        },
-      });
-
-      console.log('CodePush sync status:', syncStatus);
+      // For now, just simulate CodePush sync
+      console.log('CodePush sync simulated (not implemented in Expo)');
+      console.log('In production, this would trigger OTA update');
 
     } catch (error) {
       console.error('CodePush update failed:', error);

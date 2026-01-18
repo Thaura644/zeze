@@ -613,10 +613,25 @@ class ApiService {
   async checkAppVersion(): Promise<ApiResponse<any>> {
     try {
       const response = await this.api.post('/version/check');
-      return response.data;
+      
+      // Ensure we have a proper response structure
+      if (response.data && typeof response.data === 'object') {
+        return {
+          data: response.data,
+          error: undefined
+        };
+      } else {
+        throw new Error('Invalid response structure');
+      }
     } catch (error: any) {
       console.error('App version check error:', error);
-      throw error;
+      return {
+        data: null,
+        error: {
+          message: error.message || 'Version check failed',
+          code: 'VERSION_CHECK_ERROR'
+        }
+      };
     }
   }
 
@@ -624,10 +639,25 @@ class ApiService {
   async getVersionInfo(): Promise<ApiResponse<any>> {
     try {
       const response = await this.api.get('/version/info');
-      return response.data;
+      
+      // Ensure we have a proper response structure
+      if (response.data && typeof response.data === 'object') {
+        return {
+          data: response.data,
+          error: undefined
+        };
+      } else {
+        throw new Error('Invalid response structure');
+      }
     } catch (error: any) {
       console.error('Get version info error:', error);
-      throw error;
+      return {
+        data: null,
+        error: {
+          message: error.message || 'Failed to get version info',
+          code: 'VERSION_INFO_ERROR'
+        }
+      };
     }
   }
 }

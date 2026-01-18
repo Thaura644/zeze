@@ -100,7 +100,6 @@ router.post('/check', validateAppVersion, async (req, res) => {
           await dbQuery(`
             INSERT INTO app_version_checks (platform, current_version, latest_version, needs_update, ip, user_agent, created_at)
             VALUES ($1, $2, $3, $4, $5, $6, NOW())
-            ON CONFLICT DO NOTHING
           `, [platform, currentVersion, latestVersion, isOutdated, req.ip, req.get('User-Agent')]);
         } catch (error) {
           logger.debug('Failed to store version check', { error: error.message });

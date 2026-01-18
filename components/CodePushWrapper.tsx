@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import Toast from 'react-native-toast-message';
-import CodePush from 'react-native-code-push';
 import VersionManager from '../services/versionManager';
 
 interface CodePushWrapperProps {
