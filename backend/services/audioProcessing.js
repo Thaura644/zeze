@@ -1,4 +1,5 @@
-const ytdl = require('ytdl-core');
+const ytdl = require('@distube/ytdl-core');
+const ytDlpExec = require('yt-dlp-exec');
 const ffmpeg = require('fluent-ffmpeg');
 const path = require('path');
 const fs = require('fs').promises;
@@ -21,9 +22,31 @@ class AudioProcessingService {
     return match ? match[1] : null;
   }
 
-  // Get YouTube video metadata using API if available, fallback to ytdl
+  // Get YouTube video metadata using oEmbed API (no API key required)
   async getYouTubeMetadata(videoId) {
     try {
+      // First try oEmbed API (most reliable, no API key needed)
+      try {
+        const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+        const oembedResponse = await axios.get(oembedUrl, { timeout: 10000 });
+        
+        if (oembedResponse.data) {
+          return {
+            videoId,
+            title: oembedResponse.data.title || 'Unknown Title',
+            artist: oembedResponse.data.author_name || 'Unknown Artist',
+            duration: 0, // oEmbed doesn't provide duration, will be extracted from audio
+            thumbnail: oembedResponse.data.thumbnail_url,
+            uploadDate: null,
+            viewCount: 0,
+            description: ''
+          };
+        }
+      } catch (oembedError) {
+        logger.warn('oEmbed API failed, trying YouTube Data API', { videoId, error: oembedError.message });
+      }
+
+      // Try YouTube Data API if available
       if (this.youtubeApiKey) {
         try {
           const response = await axios.get('https://www.googleapis.com/youtube/v3/videos', {
@@ -31,7 +54,8 @@ class AudioProcessingService {
               part: 'snippet,contentDetails,statistics',
               id: videoId,
               key: this.youtubeApiKey
-            }
+            },
+            timeout: 10000
           });
 
           if (response.data.items && response.data.items.length > 0) {
@@ -48,21 +72,37 @@ class AudioProcessingService {
             };
           }
         } catch (apiError) {
-          logger.warn('YouTube API metadata fetch failed, falling back to ytdl', { videoId, error: apiError.message });
+          logger.warn('YouTube API metadata fetch failed', { videoId, error: apiError.message });
         }
       }
 
-      // Fallback to ytdl-core
-      const info = await ytdl.getInfo(videoId);
+      // Fallback to @distube/ytdl-core
+      try {
+        const info = await ytdl.getInfo(videoId);
+        return {
+          videoId,
+          title: info.videoDetails.title,
+          artist: info.videoDetails.author.name,
+          duration: parseInt(info.videoDetails.lengthSeconds),
+          thumbnail: info.videoDetails.thumbnails?.[info.videoDetails.thumbnails.length - 1]?.url,
+          uploadDate: info.videoDetails.uploadDate,
+          viewCount: parseInt(info.videoDetails.viewCount),
+          description: info.videoDetails.description
+        };
+      } catch (ytdlError) {
+        logger.warn('ytdl-core metadata fetch failed', { videoId, error: ytdlError.message });
+      }
+
+      // Final fallback - return basic metadata
       return {
         videoId,
-        title: info.videoDetails.title,
-        artist: info.videoDetails.author.name,
-        duration: parseInt(info.videoDetails.lengthSeconds),
-        thumbnail: info.videoDetails.thumbnails?.[info.videoDetails.thumbnails.length - 1]?.url,
-        uploadDate: info.videoDetails.uploadDate,
-        viewCount: parseInt(info.videoDetails.viewCount),
-        description: info.videoDetails.description
+        title: `YouTube Video ${videoId}`,
+        artist: 'Unknown Artist',
+        duration: 0,
+        thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+        uploadDate: null,
+        viewCount: 0,
+        description: ''
       };
     } catch (error) {
       logger.error('Failed to get YouTube metadata', { videoId, error: error.message });
@@ -80,8 +120,39 @@ class AudioProcessingService {
     return hours * 3600 + minutes * 60 + seconds;
   }
 
-  // Download audio from YouTube
+  // Download audio from YouTube using multiple methods
   async downloadYouTubeAudio(videoId, outputPath) {
+    const errors = [];
+
+    // Method 1: Try @distube/ytdl-core first (most compatible)
+    try {
+      logger.info('Attempting download with @distube/ytdl-core', { videoId });
+      await this.downloadWithYtdlCore(videoId, outputPath);
+      logger.info('Successfully downloaded with @distube/ytdl-core', { videoId });
+      return outputPath;
+    } catch (ytdlError) {
+      errors.push({ method: 'ytdl-core', error: ytdlError.message });
+      logger.warn('ytdl-core download failed', { videoId, error: ytdlError.message });
+    }
+
+    // Method 2: Try yt-dlp (more reliable but requires binary)
+    try {
+      logger.info('Attempting download with yt-dlp', { videoId });
+      await this.downloadWithYtDlp(videoId, outputPath);
+      logger.info('Successfully downloaded with yt-dlp', { videoId });
+      return outputPath;
+    } catch (ytDlpError) {
+      errors.push({ method: 'yt-dlp', error: ytDlpError.message });
+      logger.warn('yt-dlp download failed', { videoId, error: ytDlpError.message });
+    }
+
+    // All methods failed
+    const errorMessage = `All download methods failed: ${errors.map(e => `${e.method}: ${e.error}`).join('; ')}`;
+    logger.error('YouTube download failed completely', { videoId, errors });
+    throw new Error(errorMessage);
+  }
+
+  async downloadWithYtdlCore(videoId, outputPath) {
     return new Promise((resolve, reject) => {
       try {
         const stream = ytdl(videoId, {
@@ -101,15 +172,10 @@ class AudioProcessingService {
           reject(err);
         });
 
-        stream.on('error', (err) => {
-          logger.error('ytdl download error', { videoId, error: err.message });
-          reject(err);
-        });
-
         stream.pipe(writeStream);
 
         writeStream.on('finish', () => {
-          logger.info(`YouTube audio downloaded: ${videoId}`);
+          logger.info(`YouTube audio downloaded with ytdl-core: ${videoId}`);
           resolve(outputPath);
         });
       } catch (error) {
@@ -117,6 +183,32 @@ class AudioProcessingService {
         reject(error);
       }
     });
+  }
+
+  async downloadWithYtDlp(videoId, outputPath) {
+    try {
+      const url = `https://www.youtube.com/watch?v=${videoId}`;
+      
+      await ytDlpExec(url, {
+        extractAudio: true,
+        audioFormat: 'mp3',
+        audioQuality: 0, // Best quality
+        output: outputPath,
+        noCheckCertificates: true,
+        noWarnings: true,
+        preferFreeFormats: true,
+        addHeader: [
+          'referer:youtube.com',
+          'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        ]
+      });
+
+      logger.info(`YouTube audio downloaded with yt-dlp: ${videoId}`);
+      return outputPath;
+    } catch (error) {
+      logger.error('yt-dlp download failed', { videoId, error: error.message });
+      throw error;
+    }
   }
 
   // Convert audio to WAV format for processing
@@ -259,6 +351,8 @@ class AudioProcessingService {
   // Process YouTube URL completely
   async processYouTubeUrl(youtubeUrl, userPreferences = {}) {
     const jobId = uuidv4();
+    let tempDir = null;
+    
     try {
       await this.updateJobProgress(jobId, 'download', 0);
 
@@ -271,82 +365,36 @@ class AudioProcessingService {
       const metadata = await this.getYouTubeMetadata(videoId);
       metadata.video_url = youtubeUrl;
 
-      const tempDir = path.join(process.cwd(), 'temp', jobId);
+      tempDir = path.join(process.cwd(), 'temp', jobId);
       await fs.mkdir(tempDir, { recursive: true });
 
       const rawAudioPath = path.join(tempDir, 'raw.audio');
       
-      // Try to download, but provide fallback if it fails
-      try {
-        await this.downloadYouTubeAudio(videoId, rawAudioPath);
-      } catch (downloadError) {
-        logger.warn('YouTube download failed, using fallback data', { videoId, error: downloadError.message });
-        
-        // Create a mock result for demo purposes
-        return {
-          jobId,
-          status: 'completed',
-          metadata: {
-            videoId,
-            title: metadata.title || 'Demo Song',
-            artist: metadata.artist || 'Demo Artist',
-            duration: metadata.duration || 180,
-            thumbnail: metadata.thumbnail,
-            video_url: youtubeUrl
-          },
-          analysis: {
-            duration: metadata.duration || 180,
-            sample_rate: 44100,
-            bit_depth: 16,
-            channels: 1,
-            rms_level: 0.75,
-            zero_crossing_rate: 0.05,
-            spectral_centroid: 2000,
-            spectral_rolloff: 4000,
-            mfcc: Array(13).fill(0).map(() => Math.random()),
-            onset_times: [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0],
-            beat_times: [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0],
-            sections: [
-              { start: 0, end: 8, type: 'intro' },
-              { start: 8, end: 24, type: 'verse' },
-              { start: 24, end: 40, type: 'chorus' }
-            ]
-          },
-          chords: [
-            { chord: 'Em', startTime: 0.0, duration: 2.0, confidence: 0.95 },
-            { chord: 'C', startTime: 2.0, duration: 2.0, confidence: 0.92 },
-            { chord: 'G', startTime: 4.0, duration: 2.0, confidence: 0.88 }
-          ],
-          tempo: { bpm: 120, confidence: 0.85, time_signature: '4/4' },
-          key: { key: 'G', scale: 'major', confidence: 0.82, related_keys: ['C', 'D', 'Em', 'Am'] },
-          tablature: {
-            tuning: ['E', 'A', 'D', 'G', 'B', 'E'],
-            capo: 0,
-            notes: [
-              { string: 0, fret: 0, time: 0.0, duration: 2.0, chord: 'Em' },
-              { string: 1, fret: 0, time: 0.0, duration: 2.0, chord: 'Em' },
-              { string: 2, fret: 0, time: 0.0, duration: 2.0, chord: 'Em' }
-            ]
-          },
-          processed_at: new Date().toISOString(),
-          user_preferences: userPreferences,
-          note: 'Demo data - YouTube download failed, showing mock results'
-        };
-      }
+      // Download audio
+      await this.updateJobProgress(jobId, 'downloading_audio', 20);
+      await this.downloadYouTubeAudio(videoId, rawAudioPath);
 
       await this.updateJobProgress(jobId, 'audio_conversion', 40);
       const wavPath = path.join(tempDir, 'audio.wav');
-      
-      try {
-        await this.convertToWav(rawAudioPath, wavPath);
-      } catch (conversionError) {
-        logger.warn('Audio conversion failed, continuing with mock data', { conversionError: conversionError.message });
-      }
+      await this.convertToWav(rawAudioPath, wavPath);
+
+      // Update duration from actual audio file
+      metadata.duration = await this.getAudioDuration(wavPath);
 
       return await this.runProcessingPipeline(jobId, wavPath, metadata, userPreferences, tempDir);
     } catch (error) {
       logger.error('YouTube processing failed', { jobId, error: error.message });
       await this.updateJobProgress(jobId, 'error', null, error.message);
+      
+      // Clean up temp directory
+      if (tempDir) {
+        try {
+          await this.cleanup(tempDir);
+        } catch (cleanupError) {
+          logger.warn('Failed to cleanup temp directory', { tempDir, cleanupError: cleanupError.message });
+        }
+      }
+      
       throw error;
     }
   }
@@ -378,7 +426,7 @@ class AudioProcessingService {
       await this.cleanup(tempDir);
 
       const results = {
-        jobId,
+        job_id: jobId,
         status: 'completed',
         metadata,
         analysis,
@@ -472,82 +520,186 @@ class AudioProcessingService {
     }
   }
 
+  // Audio analysis using actual audio processing
   async analyzeAudio(audioPath, metadata) {
     logger.info(`Analyzing audio: ${audioPath}`);
+    
+    // Get actual audio properties using ffprobe
+    const audioInfo = await this.getAudioInfo(audioPath);
+    
     return {
-      duration: metadata.duration,
-      sample_rate: 44100,
-      bit_depth: 16,
-      channels: 1,
-      rms_level: 0.75,
-      zero_crossing_rate: 0.05,
-      spectral_centroid: 2000,
-      spectral_rolloff: 4000,
-      mfcc: Array(13).fill(0).map(() => Math.random()),
-      onset_times: [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0],
-      beat_times: [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0],
-      sections: [
-        { start: 0, end: 8, type: 'intro' },
-        { start: 8, end: 24, type: 'verse' },
-        { start: 24, end: 40, type: 'chorus' }
-      ]
+      duration: metadata.duration || audioInfo.duration,
+      sample_rate: audioInfo.sample_rate || 44100,
+      bit_depth: audioInfo.bit_depth || 16,
+      channels: audioInfo.channels || 1,
+      rms_level: audioInfo.rms_level || 0,
+      zero_crossing_rate: 0,
+      spectral_centroid: 0,
+      spectral_rolloff: 0,
+      mfcc: [],
+      onset_times: [],
+      beat_times: [],
+      sections: [],
+      difficulty: this.estimateDifficulty(metadata)
     };
   }
 
-  async detectChords(audioPath, analysis) {
-    logger.info(`Detecting chords in: ${audioPath}`);
-    return [
-      { chord: 'Em', startTime: 0.0, duration: 2.0, confidence: 0.95 },
-      { chord: 'C', startTime: 2.0, duration: 2.0, confidence: 0.92 },
-      { chord: 'G', startTime: 4.0, duration: 2.0, confidence: 0.88 },
-      { chord: 'D', startTime: 6.0, duration: 2.0, confidence: 0.90 },
-      { chord: 'Em', startTime: 8.0, duration: 2.0, confidence: 0.94 },
-      { chord: 'C', startTime: 10.0, duration: 2.0, confidence: 0.91 },
-      { chord: 'G', startTime: 12.0, duration: 2.0, confidence: 0.89 },
-      { chord: 'D', startTime: 14.0, duration: 2.0, confidence: 0.87 }
-    ];
+  async getAudioInfo(audioPath) {
+    return new Promise((resolve, reject) => {
+      ffmpeg.ffprobe(audioPath, (err, metadata) => {
+        if (err) {
+          logger.warn('Failed to get audio info', { audioPath, error: err.message });
+          resolve({
+            duration: 0,
+            sample_rate: 44100,
+            bit_depth: 16,
+            channels: 1,
+            rms_level: 0
+          });
+          return;
+        }
+        
+        const audioStream = metadata.streams.find(s => s.codec_type === 'audio');
+        resolve({
+          duration: metadata.format.duration || 0,
+          sample_rate: audioStream?.sample_rate || 44100,
+          bit_depth: audioStream?.bits_per_sample || 16,
+          channels: audioStream?.channels || 1,
+          rms_level: 0
+        });
+      });
+    });
   }
 
+  estimateDifficulty(metadata) {
+    // Estimate difficulty based on song duration and other factors
+    // Longer songs tend to be more complex
+    const duration = metadata.duration || 180;
+    if (duration < 120) return 2; // Short songs - easier
+    if (duration < 240) return 3; // Medium length
+    if (duration < 360) return 4; // Longer songs
+    return 5; // Very long songs
+  }
+
+  // Chord detection - uses audio analysis
+  async detectChords(audioPath, analysis) {
+    logger.info(`Detecting chords in: ${audioPath}`);
+    
+    // For now, return empty array - real chord detection requires ML models
+    // This should be replaced with actual chord detection using libraries like:
+    // - Essentia.js
+    // - Meyda
+    // - Or a custom ML model
+    
+    // Return empty array - the frontend should handle this gracefully
+    return [];
+  }
+
+  // Tempo detection using music-tempo library
   async detectTempo(audioPath) {
     logger.info(`Detecting tempo in: ${audioPath}`);
+    
+    try {
+      // Try to use music-tempo library
+      const MusicTempo = require('music-tempo');
+      const audioData = await this.getAudioData(audioPath);
+      
+      if (audioData && audioData.length > 0) {
+        const mt = new MusicTempo(audioData);
+        return {
+          bpm: Math.round(mt.tempo),
+          confidence: mt.confidence || 0.5,
+          time_signature: '4/4'
+        };
+      }
+    } catch (error) {
+      logger.warn('Tempo detection failed', { audioPath, error: error.message });
+    }
+    
+    // Return default tempo if detection fails
     return {
       bpm: 120,
-      confidence: 0.85,
+      confidence: 0,
       time_signature: '4/4'
     };
   }
 
+  async getAudioData(audioPath) {
+    // This would need to read the WAV file and return audio samples
+    // For now, return null to trigger fallback
+    return null;
+  }
+
+  // Key detection
   async detectKey(audioPath) {
     logger.info(`Detecting key in: ${audioPath}`);
+    
+    // Key detection requires spectral analysis
+    // Return empty result - should be implemented with proper audio analysis
     return {
-      key: 'G',
-      scale: 'major',
-      confidence: 0.82,
-      related_keys: ['C', 'D', 'Em', 'Am']
+      key: '',
+      scale: '',
+      confidence: 0,
+      related_keys: []
     };
   }
 
+  // Generate tablature from chords
   async generateTablature(chords, analysis) {
     logger.info('Generating tablature');
-    return {
+    
+    // Generate tablature based on detected chords
+    const tablature = {
       tuning: ['E', 'A', 'D', 'G', 'B', 'E'],
       capo: 0,
-      notes: chords.map((chord, index) => ({
-        string: Math.floor(Math.random() * 6),
-        fret: Math.floor(Math.random() * 12),
-        time: chord.startTime,
-        duration: chord.duration,
-        chord: chord.chord
-      }))
+      notes: []
     };
+
+    // Convert chords to tab notes
+    if (chords && chords.length > 0) {
+      chords.forEach(chord => {
+        const positions = this.getChordPositions(chord.chord);
+        positions.forEach(pos => {
+          tablature.notes.push({
+            string: pos.string,
+            fret: pos.fret,
+            time: chord.start_time,
+            duration: chord.duration,
+            chord: chord.chord
+          });
+        });
+      });
+    }
+
+    return tablature;
   }
 
+  // Get finger positions for common chords
+  getChordPositions(chordName) {
+    const chordShapes = {
+      'C': [{ string: 1, fret: 0 }, { string: 2, fret: 1 }, { string: 3, fret: 0 }, { string: 4, fret: 2 }, { string: 5, fret: 3 }],
+      'G': [{ string: 0, fret: 3 }, { string: 1, fret: 0 }, { string: 2, fret: 0 }, { string: 3, fret: 0 }, { string: 4, fret: 2 }, { string: 5, fret: 3 }],
+      'D': [{ string: 0, fret: 2 }, { string: 1, fret: 3 }, { string: 2, fret: 2 }, { string: 3, fret: 0 }],
+      'A': [{ string: 1, fret: 0 }, { string: 2, fret: 2 }, { string: 3, fret: 2 }, { string: 4, fret: 2 }],
+      'E': [{ string: 0, fret: 0 }, { string: 1, fret: 0 }, { string: 2, fret: 1 }, { string: 3, fret: 2 }, { string: 4, fret: 2 }, { string: 5, fret: 0 }],
+      'Am': [{ string: 0, fret: 0 }, { string: 1, fret: 1 }, { string: 2, fret: 2 }, { string: 3, fret: 2 }, { string: 4, fret: 0 }],
+      'Em': [{ string: 0, fret: 0 }, { string: 1, fret: 0 }, { string: 2, fret: 0 }, { string: 3, fret: 2 }, { string: 4, fret: 2 }, { string: 5, fret: 0 }],
+      'Dm': [{ string: 0, fret: 1 }, { string: 1, fret: 3 }, { string: 2, fret: 2 }, { string: 3, fret: 0 }],
+      'F': [{ string: 0, fret: 1 }, { string: 1, fret: 1 }, { string: 2, fret: 2 }, { string: 3, fret: 3 }, { string: 4, fret: 3 }, { string: 5, fret: 1 }],
+      'B': [{ string: 0, fret: 2 }, { string: 1, fret: 4 }, { string: 2, fret: 4 }, { string: 3, fret: 4 }, { string: 4, fret: 2 }],
+      'Bm': [{ string: 0, fret: 2 }, { string: 1, fret: 3 }, { string: 2, fret: 4 }, { string: 3, fret: 4 }, { string: 4, fret: 2 }]
+    };
+
+    return chordShapes[chordName] || [];
+  }
+
+  // Cleanup temporary files
   async cleanup(tempDir) {
     try {
       await fs.rm(tempDir, { recursive: true, force: true });
       logger.info(`Cleaned up temp directory: ${tempDir}`);
     } catch (error) {
-      logger.error('Failed to cleanup temp directory', { tempDir, error: error.message });
+      logger.warn('Failed to cleanup temp directory', { tempDir, error: error.message });
     }
   }
 }

@@ -85,68 +85,18 @@ router.post('/process-audio',
         logger.warn('Failed to parse user_preferences, using defaults', { error: parseError.message });
       }
 
-      // Start processing background job
+      // Start processing
       logger.info('Starting audio processing', {
         filePath: req.file.path,
         originalName: req.file.originalname,
         userPreferences
       });
 
-      let results;
-      try {
-        results = await audioProcessingService.processAudioFile(
-          req.file.path,
-          req.file.originalname,
-          userPreferences
-        );
-      } catch (processingError) {
-        logger.warn('Audio processing failed, returning demo data', { error: processingError.message });
-        
-        // Return demo data when processing fails
-        const jobId = `demo_${Date.now()}`;
-        const fileName = req.file.originalname || 'Unknown';
-        results = {
-          job_id: jobId,
-          status: 'completed',
-          metadata: {
-            title: fileName.replace(/\.[^/.]+$/, ''), // Remove extension
-            artist: 'Unknown Artist',
-            duration: 180
-          },
-          analysis: {
-            duration: 180,
-            difficulty: 3
-          },
-          chords: [
-            { chord: 'C', start_time: 0.0, duration: 2.0, confidence: 0.95 },
-            { chord: 'G', start_time: 2.0, duration: 2.0, confidence: 0.92 },
-            { chord: 'Am', start_time: 4.0, duration: 2.0, confidence: 0.88 },
-            { chord: 'F', start_time: 6.0, duration: 2.0, confidence: 0.90 }
-          ],
-          tempo: { bpm: 120, confidence: 0.85 },
-          key: { key: 'C', scale: 'major', confidence: 0.82 },
-          results: {
-            song_id: jobId,
-            metadata: {
-              title: fileName.replace(/\.[^/.]+$/, ''),
-              artist: 'Unknown Artist',
-              duration: 180,
-              original_key: 'C',
-              tempo_bpm: 120,
-              overall_difficulty: 3
-            },
-            chords: [
-              { chord: 'C', start_time: 0.0, duration: 2.0, confidence: 0.95 },
-              { chord: 'G', start_time: 2.0, duration: 2.0, confidence: 0.92 },
-              { chord: 'Am', start_time: 4.0, duration: 2.0, confidence: 0.88 },
-              { chord: 'F', start_time: 6.0, duration: 2.0, confidence: 0.90 }
-            ],
-            processing_completed: true,
-            is_demo: true
-          }
-        };
-        return res.json(results);
-      }
+      const results = await audioProcessingService.processAudioFile(
+        req.file.path,
+        req.file.originalname,
+        userPreferences
+      );
 
       logger.info('Audio processing completed', {
         status: results.status,
@@ -160,8 +110,8 @@ router.post('/process-audio',
             title: results.metadata?.title || 'Unknown Title',
             artist: results.metadata?.artist || 'Unknown Artist',
             duration_seconds: Math.round(results.metadata?.duration || 0),
-            original_key: results.key?.key || 'C',
-            tempo_bpm: results.tempo?.bpm || 120,
+            original_key: results.key?.key || '',
+            tempo_bpm: results.tempo?.bpm || 0,
             chord_progression: results.chords || [],
             overall_difficulty: results.analysis?.difficulty || 3,
             processing_status: 'completed'
@@ -172,17 +122,23 @@ router.post('/process-audio',
             song_id: song.song_id,
             metadata: results.metadata,
             chords: results.chords,
+            tablature: results.tablature,
+            tempo: results.tempo,
+            key: results.key,
             processing_completed: true
           };
         } catch (dbError) {
-          logger.warn('Failed to create song entry in database, returning results without DB storage', {
-            error: dbError.message
+          logger.warn('Failed to create song entry in database, returning results without DB storage', { 
+            error: dbError.message 
           });
           // Still return the processing results even if DB storage fails
           results.results = {
-            song_id: results.jobId || `temp_${Date.now()}`,
+            song_id: results.job_id,
             metadata: results.metadata,
             chords: results.chords,
+            tablature: results.tablature,
+            tempo: results.tempo,
+            key: results.key,
             processing_completed: true,
             database_storage_failed: true
           };
@@ -198,8 +154,8 @@ router.post('/process-audio',
         errorName: error.name
       });
 
-      // Handle specific error types with graceful fallback
-      let statusCode = 200; // Return 200 with demo data instead of error
+      // Handle specific error types
+      let statusCode = 500;
       let errorCode = 'PROCESSING_ERROR';
       let errorMessage = 'Failed to process audio file';
 
@@ -207,57 +163,29 @@ router.post('/process-audio',
         statusCode = 400;
         errorCode = 'INVALID_FILE_TYPE';
         errorMessage = error.message;
-        return res.status(statusCode).json({
-          error: errorMessage,
-          code: errorCode,
-          message: error.message
-        });
       } else if (error.message && error.message.includes('File too large')) {
         statusCode = 413;
         errorCode = 'FILE_TOO_LARGE';
         errorMessage = 'Audio file exceeds maximum size limit';
-        return res.status(statusCode).json({
-          error: errorMessage,
-          code: errorCode,
-          message: error.message
-        });
+      } else if (error.message && error.message.includes('ENOENT')) {
+        statusCode = 500;
+        errorCode = 'FILE_NOT_FOUND';
+        errorMessage = 'Uploaded file not found';
       } else if (error.code === 'LIMIT_FILE_SIZE') {
         statusCode = 413;
         errorCode = 'FILE_TOO_LARGE';
         errorMessage = 'File exceeds maximum size limit';
-        return res.status(statusCode).json({
-          error: errorMessage,
-          code: errorCode,
-          message: error.message
-        });
       }
 
-      // For other errors, return demo data
-      const jobId = `error_${Date.now()}`;
-      res.json({
-        job_id: jobId,
-        status: 'completed',
-        message: 'Processing encountered issues, showing demo data',
-        results: {
-          song_id: jobId,
-          metadata: {
-            title: req.file?.originalname?.replace(/\.[^/.]+$/, '') || 'Demo Song',
-            artist: 'Unknown Artist',
-            duration: 180,
-            original_key: 'C',
-            tempo_bpm: 120,
-            overall_difficulty: 3
-          },
-          chords: [
-            { chord: 'C', start_time: 0.0, duration: 2.0, confidence: 0.95 },
-            { chord: 'G', start_time: 2.0, duration: 2.0, confidence: 0.92 },
-            { chord: 'Am', start_time: 4.0, duration: 2.0, confidence: 0.88 },
-            { chord: 'F', start_time: 6.0, duration: 2.0, confidence: 0.90 }
-          ],
-          processing_completed: true,
-          is_demo: true,
-          error_message: error.message
-        }
+      res.status(statusCode).json({
+        error: errorMessage,
+        code: errorCode,
+        message: error.message,
+        details: process.env.NODE_ENV === 'development' ? {
+          stack: error.stack,
+          name: error.name,
+          code: error.code
+        } : undefined
       });
     }
   }
@@ -271,11 +199,11 @@ router.post('/process-youtube',
     try {
       const { youtube_url, user_preferences } = req.body;
 
-       logger.info('YouTube processing request received', {
-         userId: req.user?.id,
-         youtubeUrl: youtube_url,
-         userPreferences: user_preferences
-       });
+      logger.info('YouTube processing request received', {
+        userId: req.user?.id,
+        youtubeUrl: youtube_url,
+        userPreferences: user_preferences
+      });
 
       // Check if song already exists
       const videoId = audioProcessingService.extractVideoId(youtube_url);
@@ -295,7 +223,8 @@ router.post('/process-youtube',
                   duration: song.duration_seconds,
                   original_key: song.original_key,
                   tempo_bpm: song.tempo_bpm,
-                  overall_difficulty: song.overall_difficulty
+                  overall_difficulty: song.overall_difficulty,
+                  video_url: youtube_url
                 },
                 chords: song.chord_progression,
                 processing_completed: true
@@ -308,59 +237,7 @@ router.post('/process-youtube',
       }
 
       // Process the YouTube URL
-      let results;
-      try {
-        results = await audioProcessingService.processYouTubeUrl(youtube_url, user_preferences || {});
-      } catch (processingError) {
-        logger.warn('Audio processing failed, returning demo data', { error: processingError.message });
-        
-        // Return demo data when processing fails
-        const jobId = `demo_${Date.now()}`;
-        results = {
-          job_id: jobId,
-          status: 'completed',
-          metadata: {
-            videoId: videoId,
-            title: 'Demo Song',
-            artist: 'Demo Artist',
-            duration: 180,
-            video_url: youtube_url
-          },
-          analysis: {
-            duration: 180,
-            difficulty: 3
-          },
-          chords: [
-            { chord: 'Em', start_time: 0.0, duration: 2.0, confidence: 0.95 },
-            { chord: 'C', start_time: 2.0, duration: 2.0, confidence: 0.92 },
-            { chord: 'G', start_time: 4.0, duration: 2.0, confidence: 0.88 },
-            { chord: 'D', start_time: 6.0, duration: 2.0, confidence: 0.90 }
-          ],
-          tempo: { bpm: 120, confidence: 0.85 },
-          key: { key: 'G', scale: 'major', confidence: 0.82 },
-          results: {
-            song_id: jobId,
-            metadata: {
-              title: 'Demo Song',
-              artist: 'Demo Artist',
-              duration: 180,
-              original_key: 'G',
-              tempo_bpm: 120,
-              overall_difficulty: 3,
-              video_url: youtube_url
-            },
-            chords: [
-              { chord: 'Em', start_time: 0.0, duration: 2.0, confidence: 0.95 },
-              { chord: 'C', start_time: 2.0, duration: 2.0, confidence: 0.92 },
-              { chord: 'G', start_time: 4.0, duration: 2.0, confidence: 0.88 },
-              { chord: 'D', start_time: 6.0, duration: 2.0, confidence: 0.90 }
-            ],
-            processing_completed: true,
-            is_demo: true
-          }
-        };
-        return res.json(results);
-      }
+      const results = await audioProcessingService.processYouTubeUrl(youtube_url, user_preferences || {});
 
       // Create song entry in database (optional - don't fail if database is unavailable)
       if (results.status === 'completed') {
@@ -369,12 +246,13 @@ router.post('/process-youtube',
             youtube_id: videoId,
             title: results.metadata?.title || 'Unknown Title',
             artist: results.metadata?.artist || 'Unknown Artist',
-            duration_seconds: results.metadata?.duration || 0,
-            original_key: results.key?.key || 'C',
-            tempo_bpm: results.tempo?.bpm || 120,
+            duration_seconds: Math.round(results.metadata?.duration || 0),
+            original_key: results.key?.key || '',
+            tempo_bpm: results.tempo?.bpm || 0,
             chord_progression: results.chords || [],
             overall_difficulty: results.analysis?.difficulty || 3,
-            thumbnail_url: results.metadata?.thumbnail
+            thumbnail_url: results.metadata?.thumbnail,
+            processing_status: 'completed'
           };
 
           const song = await songService.createSong(songData);
@@ -382,14 +260,20 @@ router.post('/process-youtube',
             song_id: song.song_id,
             metadata: results.metadata,
             chords: results.chords,
+            tablature: results.tablature,
+            tempo: results.tempo,
+            key: results.key,
             processing_completed: true
           };
         } catch (dbError) {
           logger.warn('Failed to save song to database, returning results without DB storage', { error: dbError.message });
           results.results = {
-            song_id: results.jobId || `temp_${Date.now()}`,
+            song_id: results.job_id,
             metadata: results.metadata,
             chords: results.chords,
+            tablature: results.tablature,
+            tempo: results.tempo,
+            key: results.key,
             processing_completed: true,
             database_storage_failed: true
           };
@@ -398,35 +282,19 @@ router.post('/process-youtube',
 
       res.json(results);
     } catch (error) {
-      logger.error('YouTube processing failed', { error: error.message, youtube_url: req.body.youtube_url });
+      logger.error('YouTube processing failed', { 
+        error: error.message, 
+        youtube_url: req.body.youtube_url,
+        stack: error.stack
+      });
       
-      // Return a graceful error response with demo data
-      const jobId = `error_${Date.now()}`;
-      res.json({
-        job_id: jobId,
-        status: 'completed',
-        message: 'Processing encountered issues, showing demo data',
-        results: {
-          song_id: jobId,
-          metadata: {
-            title: 'Demo Song (Processing Error)',
-            artist: 'Demo Artist',
-            duration: 180,
-            original_key: 'C',
-            tempo_bpm: 120,
-            overall_difficulty: 3,
-            video_url: req.body.youtube_url
-          },
-          chords: [
-            { chord: 'C', start_time: 0.0, duration: 2.0, confidence: 0.95 },
-            { chord: 'G', start_time: 2.0, duration: 2.0, confidence: 0.92 },
-            { chord: 'Am', start_time: 4.0, duration: 2.0, confidence: 0.88 },
-            { chord: 'F', start_time: 6.0, duration: 2.0, confidence: 0.90 }
-          ],
-          processing_completed: true,
-          is_demo: true,
-          error_message: error.message
-        }
+      res.status(500).json({
+        error: 'Failed to process YouTube URL',
+        code: 'PROCESSING_ERROR',
+        message: error.message,
+        details: process.env.NODE_ENV === 'development' ? {
+          stack: error.stack
+        } : undefined
       });
     }
   }
