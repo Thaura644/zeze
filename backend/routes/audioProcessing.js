@@ -12,11 +12,19 @@ const logger = require('../config/logger');
 // Configure multer for audio uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    const uploadDir = path.join(process.cwd(), 'uploads');
+    logger.debug(`Upload destination: ${uploadDir}`);
+
+    // Ensure uploads directory exists
+    require('fs').mkdirSync(uploadDir, { recursive: true });
+
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    const filename = file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname);
+    logger.debug(`Generated filename: ${filename}`);
+    cb(null, filename);
   }
 });
 
@@ -26,13 +34,23 @@ const upload = multer({
     fileSize: (process.env.MAX_FILE_SIZE_MB || 50) * 1024 * 1024
   },
   fileFilter: (req, file, cb) => {
+    logger.debug('File filter check', {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      fieldname: file.fieldname
+    });
+
     const filetypes = /mp3|wav|ogg|m4a|flac/;
     const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = filetypes.test(file.mimetype);
 
+    logger.debug('File type validation', { extname, mimetype });
+
     if (mimetype && extname) {
+      logger.debug('File accepted');
       return cb(null, true);
     } else {
+      logger.warn('File rejected - invalid type', { extname, mimetype });
       cb(new Error('Only audio files (mp3, wav, ogg, m4a, flac) are allowed!'));
     }
   }
@@ -41,21 +59,44 @@ const upload = multer({
 // Process Audio File Upload
 router.post('/process-audio',
   authMiddleware.authenticate(),
+  (req, res, next) => {
+    logger.info('Authentication passed, processing upload middleware');
+    next();
+  },
   upload.single('audio_file'),
   async (req, res) => {
     try {
+      logger.info('Audio upload request received', {
+        userId: req.user?.id,
+        fileName: req.file?.originalname,
+        fileSize: req.file?.size,
+        mimeType: req.file?.mimetype
+      });
+
       if (!req.file) {
+        logger.warn('No audio file uploaded in request');
         return res.status(400).json({ error: 'No audio file uploaded' });
       }
 
       const userPreferences = req.body.user_preferences ? JSON.parse(req.body.user_preferences) : {};
 
       // Start processing background job
+      logger.info('Starting audio processing', {
+        filePath: req.file.path,
+        originalName: req.file.originalname,
+        userPreferences
+      });
+
       const results = await audioProcessingService.processAudioFile(
         req.file.path,
         req.file.originalname,
         userPreferences
       );
+
+      logger.info('Audio processing completed', {
+        status: results.status,
+        hasResults: !!results.results
+      });
 
       // Create song entry in database (optional - don't fail if database is unavailable)
       if (results.status === 'completed') {
@@ -94,13 +135,18 @@ router.post('/process-audio',
 
       res.json(results);
     } catch (error) {
-      logger.error('Audio processing failed', { error: error.message, stack: error.stack });
-      
+      logger.error('Audio processing failed', {
+        error: error.message,
+        stack: error.stack,
+        errorCode: error.code,
+        errorName: error.name
+      });
+
       // Handle specific error types
       let statusCode = 500;
       let errorCode = 'PROCESSING_ERROR';
       let errorMessage = 'Failed to process audio file';
-      
+
       if (error.message && error.message.includes('Only audio files')) {
         statusCode = 400;
         errorCode = 'INVALID_FILE_TYPE';
@@ -113,13 +159,21 @@ router.post('/process-audio',
         statusCode = 500;
         errorCode = 'FILE_NOT_FOUND';
         errorMessage = 'Uploaded file not found';
+      } else if (error.code === 'LIMIT_FILE_SIZE') {
+        statusCode = 413;
+        errorCode = 'FILE_TOO_LARGE';
+        errorMessage = 'File exceeds maximum size limit';
       }
-      
+
       res.status(statusCode).json({
         error: errorMessage,
         code: errorCode,
         message: error.message,
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        details: process.env.NODE_ENV === 'development' ? {
+          stack: error.stack,
+          name: error.name,
+          code: error.code
+        } : undefined
       });
     }
   }
