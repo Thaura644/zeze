@@ -35,6 +35,8 @@ const practiceRoutes = require('./routes/practice');
 const songRoutes = require('./routes/songs');
 const exerciseRoutes = require('./routes/exercises');
 const versionRoutes = require('./routes/version');
+const paymentRoutes = require('./routes/payments');
+const notificationRoutes = require('./routes/notifications');
 
 // Import WebSocket manager
 const websocketManager = require('./websocket/websocketManager');
@@ -196,6 +198,8 @@ app.use('/api/practice', practiceRoutes);
 app.use('/api/songs', songRoutes);
 app.use('/api/exercises', exerciseRoutes);
 app.use('/api/version', versionRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // API documentation endpoint
 app.get('/api', (req, res) => {
@@ -245,6 +249,24 @@ app.get('/api', (req, res) => {
         'POST /api/exercises/generate-variation/:exerciseId': 'Generate exercise variation',
         'GET /api/exercises/library': 'Get exercise library',
         'POST /api/exercises/load/:exerciseId': 'Load predefined exercise'
+      },
+      payments: {
+        'GET /api/payments/plans': 'Get available subscription plans',
+        'GET /api/payments/subscription': 'Get current subscription',
+        'POST /api/payments/subscription': 'Create subscription',
+        'PUT /api/payments/subscription': 'Update subscription tier',
+        'DELETE /api/payments/subscription': 'Cancel subscription',
+        'GET /api/payments/history': 'Get payment history',
+        'GET /api/payments/access': 'Check premium access',
+        'POST /api/payments/webhook': 'Stripe webhook handler'
+      },
+      notifications: {
+        'POST /api/notifications/register': 'Register device for push notifications',
+        'POST /api/notifications/unregister': 'Unregister device',
+        'POST /api/notifications/send': 'Send notification',
+        'GET /api/notifications/preferences': 'Get notification preferences',
+        'PUT /api/notifications/preferences': 'Update notification preferences',
+        'POST /api/notifications/test': 'Send test notification'
       }
     },
     websocket: {

@@ -5,18 +5,21 @@ import {
   StyleSheet,
   ActivityIndicator,
   StatusBar,
+  TouchableOpacity,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { loadSong } from '@/store/slices/playerSlice';
 import { RootState } from '@/store';
 import { Song } from '@/types/music';
 import Player from '@/components/Player/Player';
+import GuitarTuner from '@/components/Tuner/GuitarTuner';
 import { COLORS, SPACING, TYPOGRAPHY } from '@/constants/theme';
 import { useNavigation } from '@react-navigation/native';
 import Toast from 'react-native-toast-message';
 
 const PlayerScreen: React.FC = () => {
   const dispatch = useDispatch();
+  const [showTuner, setShowTuner] = React.useState(false);
 
   const {
     currentSong,
@@ -58,7 +61,16 @@ const PlayerScreen: React.FC = () => {
         song={currentSong}
         onBack={handleBack}
       />
-      {/* TODO: add tuner functionality */}
+      <TouchableOpacity
+        style={styles.tunerButton}
+        onPress={() => setShowTuner(true)}
+      >
+        <Text style={styles.tunerButtonText}>🎸 Tuner</Text>
+      </TouchableOpacity>
+      <GuitarTuner
+        visible={showTuner}
+        onClose={() => setShowTuner(false)}
+      />
     </>
   );
 };
@@ -74,6 +86,27 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     ...TYPOGRAPHY.body,
     marginTop: SPACING.md,
+  },
+  tunerButton: {
+    position: 'absolute',
+    bottom: SPACING.xl,
+    right: SPACING.lg,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  tunerButtonText: {
+    color: COLORS.text,
+    ...TYPOGRAPHY.body,
+    fontWeight: 'bold',
   },
 });
 
