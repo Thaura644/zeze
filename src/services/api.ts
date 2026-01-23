@@ -18,11 +18,12 @@ export interface ApiResponse<T = any> {
 
 export interface User {
   id: string;
-  email: string;
+  email?: string;
   username: string;
   display_name: string;
   skill_level: number;
   preferred_genres: string[];
+  preferred_tuning?: string[];
   practice_goal?: string;
   created_at: string;
   last_login_at?: string;
@@ -232,6 +233,26 @@ class ApiService {
       return response.data;
     } catch (error: any) {
       console.error('Login error:', error);
+      throw error;
+    }
+  }
+
+  async guestLogin(deviceId: string): Promise<ApiResponse<LoginResponse>> {
+    try {
+      const response = await this.api.post('/users/guest', {
+        deviceId,
+      });
+
+      if (response.data?.tokens) {
+        await this.setStoredTokens(
+          response.data.tokens.accessToken,
+          response.data.tokens.refreshToken
+        );
+      }
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Guest login error:', error);
       throw error;
     }
   }

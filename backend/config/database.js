@@ -11,7 +11,7 @@ if (process.env.DATABASE_URL) {
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000, // increased for production
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+    ssl: (process.env.NODE_ENV === 'production' || (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('supabase.co'))) ? { rejectUnauthorized: false } : false
   };
 } else {
   // Fallback to individual environment variables for development

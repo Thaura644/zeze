@@ -145,6 +145,59 @@ router.post('/login',
   }
 );
 
+// Guest login
+router.post('/guest',
+  [
+    body('deviceId').notEmpty().withMessage('Device ID is required')
+  ],
+  validationMiddleware.handleValidationErrors,
+  async (req, res) => {
+    try {
+      const { deviceId } = req.body;
+
+      // Check if guest user already exists for this device
+      let user = await userService.getUserByDeviceId(deviceId);
+
+      if (!user) {
+        user = await userService.createGuestUser(deviceId);
+      }
+
+      // Generate tokens
+      const tokens = authMiddleware.generateTokens({
+        id: user.user_id,
+        username: user.username,
+        isGuest: true
+      });
+
+      // Update login info
+      await userService.updateLoginInfo(
+        user.user_id,
+        req.ip,
+        req.get('User-Agent') || 'Unknown'
+      );
+
+      logger.info(`Guest user logged in: ${user.username}`);
+
+      res.json({
+        message: 'Guest login successful',
+        user: {
+          id: user.user_id,
+          username: user.username,
+          display_name: user.display_name,
+          skill_level: user.skill_level
+        },
+        tokens
+      });
+    } catch (error) {
+      logger.error('Guest login failed', { error: error.message, deviceId: req.body.deviceId });
+      res.status(500).json({
+        error: 'Guest login failed',
+        code: 'GUEST_LOGIN_ERROR'
+      });
+    }
+  }
+);
+
 // Refresh token
 router.post('/refresh',
   validationMiddleware.validateRefreshToken,
@@ -271,14 +324,19 @@ router.put('/profile',
     body('timezone')
       .optional()
       .isLength({ max: 50 })
-      .withMessage('Timezone must be less than 50 characters')
+      .withMessage('Timezone must be less than 50 characters'),
+    
+    body('preferred_tuning')
+      .optional()
+      .isArray()
+      .withMessage('Preferred tuning must be an array of strings')
   ],
   validationMiddleware.handleValidationErrors,
   async (req, res) => {
     try {
       const updateData = {};
       const allowedFields = ['display_name', 'username', 'skill_level', 'preferred_genres', 
-                          'practice_goal', 'daily_reminder_time', 'timezone'];
+                          'practice_goal', 'daily_reminder_time', 'timezone', 'preferred_tuning'];
 
       allowedFields.forEach(field => {
         if (req.body[field] !== undefined) {

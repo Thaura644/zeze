@@ -17,6 +17,7 @@ import { RootState, AppDispatch } from '@/store';
 import { Song } from '@/types/music';
 import InteractiveFretboard from '@/components/Fretboard/InteractiveFretboard';
 import ChordDisplay from '@/components/Player/ChordDisplay';
+import Tuner from '@/components/Player/Tuner';
 import useAudioSync from '@/hooks/useAudioSync';
 import usePracticeSession from '@/hooks/usePracticeSession';
 import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS, SHADOWS } from '@/constants/theme';
@@ -48,6 +49,7 @@ const Player: React.FC<PlayerProps> = ({ song, onBack }) => {
   const [isSeparating, setIsSeparating] = useState(false);
   const [separatedTracks, setSeparatedTracks] = useState<{ vocals?: string; instrumental?: string } | null>(null);
   const [showSkillsDropdown, setShowSkillsDropdown] = useState(false);
+  const [showTuner, setShowTuner] = useState(false);
 
   const {
     isPlaying,
@@ -435,8 +437,21 @@ const Player: React.FC<PlayerProps> = ({ song, onBack }) => {
             >
               <Text style={styles.controlButtonText}>{isRecording ? '⏹' : '🎙️'}</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.smallControlButton, showTuner && styles.controlButtonActive]}
+              onPress={() => setShowTuner(true)}
+            >
+              <Text style={styles.controlButtonText}>🎸</Text>
+            </TouchableOpacity>
           </View>
         </View>
+
+        {/* Tuner Overlay */}
+        <Tuner
+          isVisible={showTuner}
+          onClose={() => setShowTuner(false)}
+        />
 
         {/* Learning Controls */}
         <View style={styles.learningControls}>

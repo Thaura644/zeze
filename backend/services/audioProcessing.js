@@ -543,25 +543,46 @@ class AudioProcessingService {
     logger.info(`Detecting chords in: ${audioPath}`);
     
     try {
-      // Basic chord detection logic: find the dominant pitch at intervals
-      // and map it to a chord in the detected key
+      const { PitchDetector } = require('pitchy');
+      const audioData = await this.getAudioData(audioPath);
+      if (!audioData) return [];
+
       const keyResult = await this.detectKey(audioPath);
       const rootNote = keyResult.key || 'C';
       
       const chords = [];
       const duration = analysis.duration || 30;
-      const chordInterval = 4; // Every 4 seconds
+      const sampleRate = 44100;
+      const chordInterval = 4; // Analyze every 4 seconds
+      const samplesPerInterval = chordInterval * sampleRate;
       
       for (let time = 0; time < duration; time += chordInterval) {
-        // Return a progression based on the key
-        const progression = [rootNote, 'G', 'Am', 'F'];
-        const chordName = progression[Math.floor(time / chordInterval) % progression.length];
+        const startSample = Math.floor(time * sampleRate);
+        const endSample = Math.min(startSample + samplesPerInterval, audioData.length);
+        
+        if (startSample >= audioData.length) break;
+
+        const intervalData = audioData.slice(startSample, endSample);
+        const detector = PitchDetector.forFloat32Array(intervalData.length);
+        const [pitch, clarity] = detector.findPitch(intervalData, sampleRate);
+        
+        let chordName;
+        if (clarity > 0.5) {
+          const noteInfo = this.pitchToNote(pitch);
+          chordName = noteInfo.note;
+          // Basic heuristic: if it's the root note's 3rd or 6th, it might be minor
+          // For now, we'll just return the detected note as a major chord
+        } else {
+          // Fallback to a progression based on the key
+          const progression = [rootNote, 'G', 'Am', 'F'];
+          chordName = progression[Math.floor(time / chordInterval) % progression.length];
+        }
         
         chords.push({
           chord: chordName,
           start_time: time,
           duration: Math.min(chordInterval, duration - time),
-          confidence: 0.7
+          confidence: clarity
         });
       }
       
@@ -638,9 +659,12 @@ class AudioProcessingService {
         
         if (clarity > 0.6) {
           const noteInfo = this.pitchToNote(pitch);
+          // Simple heuristic for scale: 
+          // In a production environment, this would use chromagram analysis
+          // and key profiles (Krumhansl-Schmuckler)
           return {
             key: noteInfo.note,
-            scale: 'Major', // Default to major for now
+            scale: 'Major', 
             confidence: clarity,
             related_keys: []
           };

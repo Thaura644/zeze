@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  TextStyle,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
@@ -27,6 +28,10 @@ import ProfileScreen from '@/screens/ProfileScreen';
 import LearningView from '@/screens/LearningView';
 import ApiService from '@/services/api';
 import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS, SHADOWS } from '@/constants/theme';
+import OnboardingScreen from '@/screens/OnboardingScreen';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import 'react-native-get-random-values';
+import { v4 as uuidv4 } from 'uuid';
 
 const Stack = createStackNavigator();
 
@@ -242,7 +247,7 @@ const AuthenticatedApp = () => {
         },
         headerTintColor: COLORS.text,
         headerTitleStyle: {
-          ...TYPOGRAPHY.h3,
+          ...TYPOGRAPHY.h3 as TextStyle,
         },
         headerBackTitleVisible: false,
       }}
@@ -279,30 +284,90 @@ const AuthenticatedApp = () => {
 const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
-    const checkAuth = async () => {
+    const initApp = async () => {
       try {
+        // 1. Check if onboarding is completed
+        const onboardingCompleted = await AsyncStorage.getItem('onboardingCompleted');
+        if (onboardingCompleted !== 'true') {
+          setShowOnboarding(true);
+        }
+
+        // 2. Check auth
         const tokens = await ApiService.getStoredTokens();
         if (tokens?.accessToken) {
           setIsLoggedIn(true);
         }
       } catch (error) {
-        console.error('Auth check error:', error);
+        console.error('App init error:', error);
       } finally {
         setCheckingAuth(false);
       }
     };
-    checkAuth();
+    initApp();
   }, []);
 
+  const handleOnboardingComplete = async () => {
+    await AsyncStorage.setItem('onboardingCompleted', 'true');
+    setShowOnboarding(false);
+  };
 
+  const getDeviceId = async () => {
+    let deviceId = await AsyncStorage.getItem('deviceId');
+    if (!deviceId) {
+      deviceId = uuidv4();
+      await AsyncStorage.setItem('deviceId', deviceId);
+    }
+    return deviceId;
+  };
+
+  const handleGuestLogin = async () => {
+    try {
+      const deviceId = await getDeviceId();
+      const response = await ApiService.guestLogin(deviceId);
+      if (response.data?.tokens) {
+        setIsLoggedIn(true);
+        await handleOnboardingComplete();
+        Toast.show({
+          type: 'success',
+          text1: 'Welcome!',
+          text2: 'Continue as Guest',
+        });
+      }
+    } catch (error: any) {
+      Toast.show({
+        type: 'error',
+        text1: 'Guest Login Failed',
+        text2: error.message,
+      });
+    }
+  };
 
   if (checkingAuth) {
     return (
       <View style={[styles.container, styles.centered]}>
         <ActivityIndicator size="large" color={COLORS.primary} />
       </View>
+    );
+  }
+
+  if (showOnboarding) {
+    return (
+      <SafeAreaProvider>
+        <Provider store={store}>
+          <OnboardingScreen 
+            onComplete={handleOnboardingComplete}
+            onGuestLogin={handleGuestLogin}
+            onLogin={() => {
+              // Just close onboarding and show login
+              handleOnboardingComplete();
+            }}
+          />
+        </Provider>
+        <Toast />
+      </SafeAreaProvider>
     );
   }
 
@@ -367,12 +432,12 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   title: {
-    ...TYPOGRAPHY.h1,
+    ...TYPOGRAPHY.h1 as TextStyle,
     color: COLORS.primary,
     marginBottom: SPACING.xs,
   },
   subtitle: {
-    ...TYPOGRAPHY.body,
+    ...TYPOGRAPHY.body as TextStyle,
     color: COLORS.textSecondary,
     opacity: 0.8,
   },
@@ -389,7 +454,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   label: {
-    ...TYPOGRAPHY.caption,
+    ...TYPOGRAPHY.caption as TextStyle,
     color: COLORS.textSecondary,
     marginBottom: 8,
     marginLeft: 4,
@@ -415,7 +480,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   loginButtonText: {
-    ...TYPOGRAPHY.button,
+    ...TYPOGRAPHY.button as TextStyle,
     color: COLORS.text,
     fontSize: 16,
   },
@@ -424,7 +489,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
   },
   forgotPasswordText: {
-    ...TYPOGRAPHY.caption,
+    ...TYPOGRAPHY.caption as TextStyle,
     color: COLORS.secondary,
   },
   divider: {
@@ -438,7 +503,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.glassBorder,
   },
   dividerText: {
-    ...TYPOGRAPHY.caption,
+    ...TYPOGRAPHY.caption as TextStyle,
     color: COLORS.textMuted,
     marginHorizontal: SPACING.md,
   },
@@ -451,7 +516,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.glassBorder,
   },
   socialButtonText: {
-    ...TYPOGRAPHY.button,
+    ...TYPOGRAPHY.button as TextStyle,
     color: COLORS.text,
     fontSize: 14,
   },

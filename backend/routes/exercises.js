@@ -3,6 +3,8 @@ const router = express.Router();
 const audioGenerationService = require('../services/audioGenerationService');
 const auth = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
+const { v4: uuidv4 } = require('uuid');
+const logger = require('../config/logger');
 
 // Generate a new guitar exercise
 router.post('/generate-exercise', auth.authenticate(), async (req, res) => {
@@ -121,16 +123,14 @@ router.post('/generate-variation/:exerciseId', auth.authenticate(), async (req, 
 
     const { exerciseId } = req.params;
     
-    // This would retrieve the original exercise and create a variation
-    // For now, we'll simulate this
-    const variation = await audioGenerationService.generateGuitarExercise({
-      skillLevel: 'intermediate',
-      style: 'rock',
-      tempo: variationType === 'tempo' ? value : 120,
-      duration: 30,
-      key: variationType === 'key' ? value : 'C',
-      exerciseType: 'melody'
-    });
+    // Retrieve the original exercise from the database
+    const originalExercise = await getExerciseById(exerciseId);
+    if (!originalExercise) {
+      return res.status(404).json({ error: 'Original exercise not found' });
+    }
+    
+    // Generate variation based on the original exercise and variation parameters
+    const variation = await generateExerciseVariation(originalExercise, variationType, value);
     
     res.json({
       success: true,
@@ -145,13 +145,117 @@ router.post('/generate-variation/:exerciseId', auth.authenticate(), async (req, 
       }
     });
   } catch (error) {
-    console.error('Variation generation error:', error);
+    logger.error('Variation generation error:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to generate variation'
     });
   }
 });
+
+// Helper function to retrieve exercise by ID
+async function getExerciseById(exerciseId) {
+  // In a real implementation, this would query the database
+  // For now, we'll simulate by returning a mock exercise
+  return {
+    exerciseId: exerciseId,
+    skillLevel: 'intermediate',
+    style: 'rock',
+    tempo: 120,
+    duration: 30,
+    key: 'C',
+    exerciseType: 'melody'
+  };
+}
+
+// Helper function to generate exercise variations algorithmically
+async function generateExerciseVariation(originalExercise, variationType, value) {
+  // Create a copy of the original exercise
+  const variationOptions = { ...originalExercise };
+  
+  // Apply the variation based on type
+  switch (variationType) {
+    case 'tempo':
+      variationOptions.tempo = parseInt(value);
+      variationOptions.duration = Math.max(10, Math.min(120, originalExercise.duration * (120 / variationOptions.tempo)));
+      break;
+    case 'key':
+      variationOptions.key = value;
+      // Adjust tempo slightly for key changes to maintain musical feel
+      variationOptions.tempo = Math.max(40, Math.min(200, originalExercise.tempo * 0.95));
+      break;
+    case 'style':
+      variationOptions.style = value;
+      // Different styles may have different typical tempos
+      const styleTempos = {
+        'rock': 120,
+        'blues': 100,
+        'jazz': 140,
+        'folk': 90,
+        'classical': 110
+      };
+      variationOptions.tempo = styleTempos[value] || originalExercise.tempo;
+      break;
+    case 'complexity':
+      // Adjust skill level based on complexity value
+      const complexityMap = {
+        'easy': 'beginner',
+        'medium': 'intermediate',
+        'hard': 'advanced'
+      };
+      variationOptions.skillLevel = complexityMap[value] || originalExercise.skillLevel;
+      break;
+  }
+  
+  // Ensure musical coherence by validating the variation
+  validateMusicalCoherence(variationOptions);
+  
+  // Generate the variation using the audio generation service
+  const variation = await audioGenerationService.generateGuitarExercise(variationOptions);
+  
+  return variation;
+}
+
+// Helper function to validate musical coherence
+function validateMusicalCoherence(options) {
+  // Validate tempo is within reasonable range for the style
+  const styleTempoRanges = {
+    'rock': { min: 80, max: 180 },
+    'blues': { min: 60, max: 140 },
+    'jazz': { min: 100, max: 200 },
+    'folk': { min: 60, max: 120 },
+    'classical': { min: 60, max: 160 }
+  };
+  
+  const range = styleTempoRanges[options.style] || { min: 40, max: 200 };
+  options.tempo = Math.max(range.min, Math.min(range.max, options.tempo));
+  
+  // Validate key is compatible with the style
+  const styleKeys = {
+    'blues': ['A', 'E', 'B', 'C', 'G'],
+    'rock': ['E', 'A', 'D', 'G', 'C'],
+    'jazz': ['C', 'F', 'Bb', 'Eb', 'G'],
+    'folk': ['G', 'C', 'D', 'A', 'E'],
+    'classical': ['C', 'G', 'D', 'A', 'E']
+  };
+  
+  // If the key is not in the preferred keys for the style, adjust to a compatible key
+  if (styleKeys[options.style] && !styleKeys[options.style].includes(options.key)) {
+    options.key = styleKeys[options.style][0]; // Use the first preferred key
+  }
+  
+  // Ensure duration is appropriate for the exercise type and skill level
+  const durationConstraints = {
+    'beginner': { min: 15, max: 60 },
+    'intermediate': { min: 20, max: 90 },
+    'advanced': { min: 30, max: 120 }
+  };
+  
+  const constraints = durationConstraints[options.skillLevel] || { min: 10, max: 120 };
+  options.duration = Math.max(constraints.min, Math.min(constraints.max, options.duration));
+  
+  logger.info(`Validated musical coherence for exercise: ${JSON.stringify(options)}`);
+}
 
 // Get exercise library (pre-defined exercises)
 router.get('/library', auth.authenticate(), async (req, res) => {

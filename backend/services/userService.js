@@ -88,6 +88,40 @@ class UserService {
     }
   }
 
+  // Get user by device ID
+  async getUserByDeviceId(deviceId) {
+    try {
+      const result = await query(
+        'SELECT * FROM users WHERE current_device_id = $1 AND auth_provider = \'guest\' AND deleted_at IS NULL',
+        [deviceId]
+      );
+      return result.rows[0] || null;
+    } catch (error) {
+      logger.error('Failed to get user by device ID', { deviceId, error: error.message });
+      throw error;
+    }
+  }
+
+  // Create guest user
+  async createGuestUser(deviceId) {
+    try {
+      const username = `guest_${Math.random().toString(36).substring(2, 9)}`;
+      const result = await query(
+        `INSERT INTO users (
+          username, display_name, auth_provider, current_device_id, skill_level
+        ) VALUES ($1, $2, $3, $4, $5)
+        RETURNING *`,
+        [username, 'Guest User', 'guest', deviceId, 1]
+      );
+
+      logger.info(`New guest user created: ${username}`);
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Failed to create guest user', { error: error.message, deviceId });
+      throw error;
+    }
+  }
+
   // Update user profile
   async updateUser(userId, updateData) {
     const allowedFields = [

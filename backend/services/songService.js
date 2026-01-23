@@ -63,36 +63,6 @@ class SongService {
         if (error.constraint && error.constraint.includes('youtube_id')) {
           throw new Error('Song with this YouTube ID already exists');
         }
-      } else if (error.code === '42P01') { // Table doesn't exist
-        logger.warn('Songs table does not exist, skipping database storage', {
-          title,
-          artist,
-          error: error.message
-        });
-        // Return a mock song object so the processing can continue
-        return {
-          song_id: 'temp-' + Date.now(),
-          title,
-          artist,
-          duration_seconds,
-          processing_status: 'completed',
-          created_at: new Date().toISOString()
-        };
-      } else if (error.code === 'ECONNREFUSED' || error.message?.includes('connect')) {
-        logger.warn('Database connection failed, skipping song storage', {
-          title,
-          artist,
-          error: error.message
-        });
-        // Return a mock song object
-        return {
-          song_id: 'temp-' + Date.now(),
-          title,
-          artist,
-          duration_seconds,
-          processing_status: 'completed',
-          created_at: new Date().toISOString()
-        };
       }
 
       logger.error('Failed to create song', { title, artist, error: error.message });
@@ -422,9 +392,6 @@ class SongService {
         throw new Error('Song not found');
       }
 
-      // This would integrate with the transposition engine
-      // For now, return mock transposed data
-      
       const transposition = {
         original_key: song.original_key,
         target_key: targetKey,
@@ -443,43 +410,94 @@ class SongService {
 
   // Helper methods for transposition
   calculateCapoPosition(originalKey, targetKey) {
-    // Simplified capo calculation
+    if (!originalKey || !targetKey) return 0;
+    
     const keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-    const originalIndex = keys.indexOf(originalKey.replace('m', ''));
-    const targetIndex = keys.indexOf(targetKey.replace('m', ''));
+    const originalRoot = originalKey.replace(/m|maj|min/g, '').trim();
+    const targetRoot = targetKey.replace(/m|maj|min/g, '').trim();
     
-    let capo = targetIndex - originalIndex;
-    if (capo < 0) capo += 12;
+    const originalIndex = keys.indexOf(originalRoot);
+    const targetIndex = keys.indexOf(targetRoot);
     
-    return capo <= 5 ? capo : 0; // Only use capo for 1-5 frets
+    if (originalIndex === -1 || targetIndex === -1) return 0;
+    
+    let diff = targetIndex - originalIndex;
+    if (diff < 0) diff += 12;
+    
+    return diff <= 11 ? diff : 0;
   }
 
   transposeChords(chords, originalKey, targetKey) {
-    // Mock chord transposition
-    if (!chords || !Array.isArray(chords)) return [];
+    if (!chords || !Array.isArray(chords) || !originalKey || !targetKey) return chords || [];
     
-    const chordMap = {
-      'C': 'G', 'D': 'A', 'E': 'B', 'G': 'D', 'A': 'E', 'B': 'F#',
-      'Em': 'Bm', 'Am': 'Em', 'Dm': 'Am', 'Cm': 'Gm'
-    };
-
-    return chords.map(chord => ({
-      ...chord,
-      transposed_chord: chordMap[chord.chord] || chord.chord,
-      fingering: chord.fingering // This would be recalculated based on transposition
-    }));
+    const keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    const originalRoot = originalKey.replace(/m|maj|min/g, '').trim();
+    const targetRoot = targetKey.replace(/m|maj|min/g, '').trim();
+    
+    const originalIndex = keys.indexOf(originalRoot);
+    const targetIndex = keys.indexOf(targetRoot);
+    
+    if (originalIndex === -1 || targetIndex === -1) return chords;
+    
+    const diff = (targetIndex - originalIndex + 12) % 12;
+    
+    return chords.map(chord => {
+      if (!chord.chord) return chord;
+      
+      const parts = chord.chord.match(/^([A-G][#b]?)(.*)$/);
+      if (!parts) return chord;
+      
+      const root = parts[1];
+      const suffix = parts[2];
+      
+      // Normalize root (e.g. Db -> C#)
+      let rootNorm = root;
+      if (root === 'Db') rootNorm = 'C#';
+      else if (root === 'Eb') rootNorm = 'D#';
+      else if (root === 'Gb') rootNorm = 'F#';
+      else if (root === 'Ab') rootNorm = 'G#';
+      else if (root === 'Bb') rootNorm = 'A#';
+      
+      const rootIndex = keys.indexOf(rootNorm);
+      if (rootIndex === -1) return chord;
+      
+      const newRootIndex = (rootIndex + diff) % 12;
+      const newRoot = keys[newRootIndex];
+      
+      return {
+        ...chord,
+        transposed_chord: newRoot + suffix,
+        original_chord: chord.chord
+      };
+    });
   }
 
   transposeTablature(tablature, originalKey, targetKey, preserveFingering) {
-    // Mock tablature transposition
-    if (!tablature) return null;
+    if (!tablature || !originalKey || !targetKey) return tablature;
+
+    const keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    const originalRoot = originalKey.replace(/m|maj|min/g, '').trim();
+    const targetRoot = targetKey.replace(/m|maj|min/g, '').trim();
+    
+    const originalIndex = keys.indexOf(originalRoot);
+    const targetIndex = keys.indexOf(targetRoot);
+    
+    if (originalIndex === -1 || targetIndex === -1) return tablature;
+    
+    const diff = (targetIndex - originalIndex + 12) % 12;
 
     return {
       ...tablature,
-      notes: tablature.notes?.map(note => ({
-        ...note,
-        fret: preserveFingering ? note.fret : Math.max(0, note.fret + 2) // Simple transposition
-      }))
+      notes: tablature.notes?.map(note => {
+        if (typeof note.fret !== 'number') return note;
+        
+        // If preserving fingering, we just use a capo and don't change frets
+        // relative to the nut/capo. If not, we shift the frets.
+        return {
+          ...note,
+          fret: preserveFingering ? note.fret : Math.max(0, note.fret + diff)
+        };
+      })
     };
   }
 }

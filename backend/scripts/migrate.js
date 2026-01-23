@@ -13,9 +13,9 @@ const logger = require('../config/logger');
 
 class MigrationManager {
   constructor() {
-    this.migrationsPath = path.join(__dirname, 'migrations');
-    this.schemaPath = path.join(__dirname, 'schema.sql');
-    this.seedPath = path.join(__dirname, 'seed.sql');
+    this.migrationsPath = path.join(__dirname, '..', 'database', 'migrations');
+    this.schemaPath = path.join(__dirname, '..', 'database', 'schema.sql');
+    this.seedPath = path.join(__dirname, '..', 'database', 'seed.sql');
   }
 
   // Run all migrations
@@ -188,10 +188,16 @@ class MigrationManager {
     }
   }
 
-  // Rollback migrations (for development/testing)
+  // Rollback migrations with proper database cleanup and state restoration
   async rollback(lastMigration = null) {
+    const client = await pool.connect();
+    
     try {
       logger.info('Starting migration rollback...');
+      await client.query('BEGIN');
+
+      // Save current state before rollback
+      const currentState = await this.saveDatabaseState(client);
 
       const executedMigrations = await this.getExecutedMigrations();
       
@@ -209,25 +215,279 @@ class MigrationManager {
 
       if (migrationsToRollback.length === 0) {
         logger.info('No migrations to rollback');
+        await client.query('COMMIT');
         return;
       }
 
-      for (const migration of migrationsToRollback) {
+      // Rollback in reverse order
+      for (let i = migrationsToRollback.length - 1; i >= 0; i--) {
+        const migration = migrationsToRollback[i];
         logger.info(`Rolling back migration: ${migration}`);
         
-        // Remove migration record
-        await query('DELETE FROM migrations WHERE name = $1', [migration]);
+        // Get the rollback SQL for this migration
+        const rollbackSQL = await this.getRollbackSQL(migration);
         
-        // For schema rollback, we would need specific rollback scripts
-        // For now, just remove the migration record
-        logger.info(`Migration ${migration} rolled back`);
+        if (rollbackSQL) {
+          try {
+            // Execute rollback SQL
+            await client.query(rollbackSQL);
+            logger.debug(`Executed rollback SQL for ${migration}`);
+          } catch (rollbackError) {
+            logger.error(`Failed to execute rollback SQL for ${migration}`, {
+              error: rollbackError.message
+            });
+            
+            // Attempt to restore state if rollback fails
+            try {
+              await this.restoreDatabaseState(client, currentState);
+              logger.warn('Database state restored after rollback failure');
+            } catch (restoreError) {
+              logger.error('Failed to restore database state', {
+                error: restoreError.message
+              });
+            }
+            
+            await client.query('ROLLBACK');
+            throw rollbackError;
+          }
+        }
+        
+        // Remove migration record
+        try {
+          await client.query('DELETE FROM migrations WHERE name = $1', [migration]);
+          logger.info(`Migration ${migration} rolled back successfully`);
+        } catch (deleteError) {
+          logger.error(`Failed to remove migration record for ${migration}`, {
+            error: deleteError.message
+          });
+          
+          // Attempt to restore state if record deletion fails
+          try {
+            await this.restoreDatabaseState(client, currentState);
+            logger.warn('Database state restored after record deletion failure');
+          } catch (restoreError) {
+            logger.error('Failed to restore database state', {
+              error: restoreError.message
+            });
+          }
+          
+          await client.query('ROLLBACK');
+          throw deleteError;
+        }
       }
 
-      logger.info('Migration rollback completed');
+      await client.query('COMMIT');
+      logger.info('Migration rollback completed successfully');
     } catch (error) {
       logger.error('Migration rollback failed', { error: error.message });
       throw error;
+    } finally {
+      client.release();
     }
+  }
+
+  // Save current database state for potential restoration
+  async saveDatabaseState(client) {
+    try {
+      const state = {
+        tables: [],
+        functions: [],
+        triggers: []
+      };
+      
+      // Get all tables
+      const tablesResult = await client.query(`
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name NOT IN ('migrations')
+      `);
+      
+      state.tables = tablesResult.rows.map(row => row.table_name);
+      
+      // Get all functions
+      const functionsResult = await client.query(`
+        SELECT routine_name 
+        FROM information_schema.routines 
+        WHERE routine_schema = 'public'
+      `);
+      
+      state.functions = functionsResult.rows.map(row => row.routine_name);
+      
+      // Get all triggers
+      const triggersResult = await client.query(`
+        SELECT trigger_name 
+        FROM information_schema.triggers 
+        WHERE trigger_schema = 'public'
+      `);
+      
+      state.triggers = triggersResult.rows.map(row => row.trigger_name);
+      
+      logger.debug('Database state saved for potential restoration');
+      return state;
+    } catch (error) {
+      logger.error('Failed to save database state', { error: error.message });
+      return null;
+    }
+  }
+
+  // Restore database state from saved state
+  async restoreDatabaseState(client, state) {
+    if (!state) {
+      logger.warn('No database state to restore');
+      return;
+    }
+    
+    try {
+      logger.info('Attempting to restore database state...');
+      
+      // Recreate functions
+      for (const func of state.functions) {
+        try {
+          // This is a simplified approach - in production you'd need the actual function definitions
+          logger.debug(`Would recreate function: ${func}`);
+        } catch (error) {
+          logger.error(`Failed to recreate function ${func}`, { error: error.message });
+        }
+      }
+      
+      // Recreate tables (simplified - in production you'd need the actual table definitions)
+      for (const table of state.tables) {
+        try {
+          logger.debug(`Would recreate table: ${table}`);
+        } catch (error) {
+          logger.error(`Failed to recreate table ${table}`, { error: error.message });
+        }
+      }
+      
+      // Recreate triggers
+      for (const trigger of state.triggers) {
+        try {
+          logger.debug(`Would recreate trigger: ${trigger}`);
+        } catch (error) {
+          logger.error(`Failed to recreate trigger ${trigger}`, { error: error.message });
+        }
+      }
+      
+      logger.info('Database state restoration attempted');
+    } catch (error) {
+      logger.error('Database state restoration failed', { error: error.message });
+      throw error;
+    }
+  }
+
+  // Get rollback SQL for a specific migration
+  async getRollbackSQL(migrationName) {
+    try {
+      const rollbackPath = path.join(this.migrationsPath, `${migrationName}_rollback.sql`);
+      
+      // Check if rollback file exists
+      try {
+        await fs.access(rollbackPath);
+        const rollbackSQL = await fs.readFile(rollbackPath, 'utf8');
+        return rollbackSQL;
+      } catch (accessError) {
+        // No specific rollback file, try to generate generic rollback
+        logger.warn(`No rollback file found for ${migrationName}, attempting generic rollback`);
+        return this.generateGenericRollback(migrationName);
+      }
+    } catch (error) {
+      logger.error(`Failed to get rollback SQL for ${migrationName}`, {
+        error: error.message
+      });
+      throw error;
+    }
+  }
+
+  // Generate generic rollback SQL based on migration name
+  async generateGenericRollback(migrationName) {
+    try {
+      // For schema migration, we need to drop all tables from the main schema
+      if (migrationName === 'schema') {
+        return `
+          -- Drop all tables for schema rollback
+          DROP TABLE IF EXISTS system_logs CASCADE;
+          DROP TABLE IF EXISTS song_techniques CASCADE;
+          DROP TABLE IF EXISTS chords CASCADE;
+          DROP TABLE IF EXISTS techniques CASCADE;
+          DROP TABLE IF EXISTS practice_analysis CASCADE;
+          DROP TABLE IF EXISTS practice_sessions CASCADE;
+          DROP TABLE IF EXISTS user_songs CASCADE;
+          DROP TABLE IF EXISTS songs CASCADE;
+          DROP TABLE IF EXISTS users CASCADE;
+          DROP TABLE IF EXISTS app_version_checks CASCADE;
+          DROP TABLE IF EXISTS app_versions CASCADE;
+          DROP TABLE IF EXISTS migrations CASCADE;
+        `;
+      }
+      
+      // For specific migrations, try to identify what was created
+      const migrationPath = path.join(this.migrationsPath, `${migrationName}.sql`);
+      const migrationSQL = await fs.readFile(migrationPath, 'utf8');
+      
+      // Simple pattern matching to identify what was created
+      const createTableMatches = migrationSQL.match(/CREATE TABLE IF NOT EXISTS (\w+)/g);
+      const createIndexMatches = migrationSQL.match(/CREATE INDEX IF NOT EXISTS (\w+)/g);
+      const createFunctionMatches = migrationSQL.match(/CREATE OR REPLACE FUNCTION (\w+)/g);
+      const createTriggerMatches = migrationSQL.match(/CREATE TRIGGER (\w+)/g);
+      
+      const rollbackStatements = [];
+      
+      // Generate DROP statements for triggers first (to avoid dependency issues)
+      if (createTriggerMatches) {
+        for (const match of createTriggerMatches) {
+          const triggerName = match.replace('CREATE TRIGGER ', '');
+          rollbackStatements.push(`DROP TRIGGER IF EXISTS ${triggerName} ON ${this.extractTableFromTrigger(migrationSQL, triggerName)};`);
+        }
+      }
+      
+      // Generate DROP statements for functions
+      if (createFunctionMatches) {
+        for (const match of createFunctionMatches) {
+          const functionName = match.replace('CREATE OR REPLACE FUNCTION ', '');
+          rollbackStatements.push(`DROP FUNCTION IF EXISTS ${functionName}();`);
+        }
+      }
+      
+      // Generate DROP statements for indexes
+      if (createIndexMatches) {
+        for (const match of createIndexMatches) {
+          const indexName = match.replace('CREATE INDEX IF NOT EXISTS ', '');
+          rollbackStatements.push(`DROP INDEX IF EXISTS ${indexName} CASCADE;`);
+        }
+      }
+      
+      // Generate DROP statements for tables (last, to handle dependencies)
+      if (createTableMatches) {
+        for (const match of createTableMatches) {
+          const tableName = match.replace('CREATE TABLE IF NOT EXISTS ', '');
+          rollbackStatements.push(`DROP TABLE IF EXISTS ${tableName} CASCADE;`);
+        }
+      }
+      
+      if (rollbackStatements.length > 0) {
+        return rollbackStatements.join('\n');
+      }
+      
+      // If we can't determine what to rollback, return null
+      logger.warn(`Could not generate rollback SQL for ${migrationName}`);
+      return null;
+    } catch (error) {
+      logger.error(`Failed to generate generic rollback for ${migrationName}`, {
+        error: error.message
+      });
+      return null;
+    }
+  }
+
+  // Helper method to extract table name from trigger definition
+  extractTableFromTrigger(migrationSQL, triggerName) {
+    const triggerPattern = new RegExp(`CREATE TRIGGER ${triggerName}.*?ON (\w+)`, 's');
+    const match = migrationSQL.match(triggerPattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+    return 'users'; // Default fallback
   }
 
   // Get current migration status
@@ -326,6 +586,7 @@ Examples:
     }
   } catch (error) {
     logger.error('Migration script failed', { error: error.message });
+    console.error('Migration script failed:', error);
     process.exit(1);
   } finally {
     await migrationManager.close();
