@@ -102,7 +102,7 @@ const BasicFretboard: React.FC<BasicFretboardProps> = ({ chord, showNumbers = tr
   const renderChordDots = () => {
     if (!chord) return null;
     
-    const dots: JSX.Element[] = [];
+    const dots: React.ReactNode[] = [];
     chord.fingerPositions.forEach((position, index) => {
       const x = position.fret === 0 ? fretWidth / 2 : position.fret * fretWidth - fretWidth / 2;
       const y = position.string * stringSpacing;

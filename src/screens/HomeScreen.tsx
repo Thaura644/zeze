@@ -18,8 +18,10 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import Toast from 'react-native-toast-message';
 import * as DocumentPicker from 'expo-document-picker';
 import { RootState, AppDispatch } from '@/store';
-import { processYouTubeUrl, processAudioFile, clearError } from '@/store/slices/songsSlice';
+import { processYouTubeUrl, processAudioFile, clearError, fetchPopularSongs, fetchRecommendedSongs } from '@/store/slices/songsSlice';
 import { Song } from '@/types/music';
+import ApiService from '@/services/api';
+import { isFeatureEnabled, SubscriptionTier } from '@/constants/plans';
 import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS, SHADOWS } from '@/constants/theme';
 import { LEARNING_ROAMMAP } from '@/data/learningRoadmap';
 
@@ -34,12 +36,22 @@ type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Home'>;
 
 const HomeScreen: React.FC = () => {
   const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<Song[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [activeTab, setActiveTab] = useState<'youtube' | 'upload'>('youtube');
   const [selectedFile, setSelectedFile] = useState<DocumentPicker.DocumentPickerResult | null>(null);
   const dispatch = useDispatch<AppDispatch>();
   const navigation = useNavigation<HomeScreenNavigationProp>();
 
   const { loading, error, songs, processingStatus, processingProgress } = useSelector((state: RootState) => state.songs);
+  const { user } = useSelector((state: RootState) => state.profile);
+  const userTier: SubscriptionTier = (user as any)?.subscription_tier || 'free';
+
+  React.useEffect(() => {
+    dispatch(fetchPopularSongs());
+    dispatch(fetchRecommendedSongs());
+  }, [dispatch]);
 
   const handleProcessYouTube = async () => {
     if (!youtubeUrl.trim()) {
@@ -62,6 +74,16 @@ const HomeScreen: React.FC = () => {
     }
 
     try {
+      // Check tier limit (simplified frontend check)
+      if (userTier === 'free' && songs.filter(s => s.processedAt).length >= 1) {
+         Toast.show({
+           type: 'info',
+           text1: 'Plan Limit Reached',
+           text2: 'Free plan is limited to 1 song process. Upgrade to Basic for more!',
+         });
+         return;
+      }
+
       const resultAction = await dispatch(processYouTubeUrl(youtubeUrl));
       handleProcessResult(resultAction);
     } catch (err) {
@@ -120,6 +142,38 @@ const HomeScreen: React.FC = () => {
         text1: 'Error',
         text2: 'Failed to upload file',
       });
+    }
+  };
+
+  const handleSearch = async (text: string) => {
+    setSearchTerm(text);
+    if (text.length > 2) {
+      setIsSearching(true);
+      try {
+        const response = await ApiService.searchSongs({ query: text });
+        if (response.data?.songs) {
+          // Map to music.ts Song type
+          const mappedSongs: Song[] = response.data.songs.map((s: any) => ({
+             id: s.song_id,
+             title: s.title,
+             artist: s.artist,
+             duration: s.duration_seconds,
+             difficulty: s.overall_difficulty,
+             tempo: s.tempo_bpm,
+             key: s.original_key,
+             youtubeId: '',
+             videoUrl: '',
+             chords: []
+          }));
+          setSearchResults(mappedSongs);
+        }
+      } catch (err) {
+        console.error('Search error:', err);
+      } finally {
+        setIsSearching(false);
+      }
+    } else {
+      setSearchResults([]);
     }
   };
 
@@ -189,7 +243,10 @@ const HomeScreen: React.FC = () => {
 
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <Text style={styles.logo}>🎸</Text>
+          <View>
+            <Text style={styles.greeting}>Good Morning,</Text>
+            <Text style={styles.userName}>Alex</Text>
+          </View>
           <TouchableOpacity
             style={styles.profileButton}
             onPress={() => navigation.navigate('Profile' as any)}
@@ -197,13 +254,88 @@ const HomeScreen: React.FC = () => {
             <Text style={styles.profileIcon}>👤</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.title}>ZEZE</Text>
-        <Text style={styles.subtitle}>
-          Your AI-powered guitar tutor
-        </Text>
+
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search songs, artists..."
+            placeholderTextColor={COLORS.textMuted}
+            value={searchTerm}
+            onChangeText={handleSearch}
+          />
+        </View>
       </View>
 
-      <View style={styles.card}>
+      {/* Search Results */}
+      {searchResults.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Search Results</Text>
+          {searchResults.map((song) => (
+            <TouchableOpacity
+              key={song.id}
+              style={styles.songCard}
+              onPress={() => handleSongPress(song)}
+            >
+              <View style={styles.songIconContainer}>
+                <Text style={styles.songIcon}>🔍</Text>
+              </View>
+              <View style={styles.songInfo}>
+                <Text style={styles.songTitle}>{song.title}</Text>
+                <Text style={styles.songArtist}>{song.artist}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* Practice Now CTA */}
+      <TouchableOpacity style={styles.practiceNowCard}>
+        <View style={styles.practiceNowContent}>
+          <Text style={styles.practiceNowTitle}>Practice Now</Text>
+          <Text style={styles.practiceNowSubtitle}>Daily Goal: 30 mins</Text>
+          <View style={styles.progressContainerSmall}>
+            <View style={styles.progressBarSmall}>
+              <View style={[styles.progressFillSmall, { width: '50%' }]} />
+            </View>
+            <Text style={styles.progressTextSmall}>15 mins completed</Text>
+          </View>
+        </View>
+        <View style={styles.practiceNowIcon}>
+          <Text style={styles.playIconLarge}>▶</Text>
+        </View>
+      </TouchableOpacity>
+
+      {/* Trending Songs */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Trending Songs</Text>
+          <TouchableOpacity>
+            <Text style={styles.seeAllText}>See All</Text>
+          </TouchableOpacity>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.trendingScroll}>
+          {songs.length > 0 ? songs.slice(0, 5).map((song, index) => (
+            <TouchableOpacity key={index} style={styles.trendingCard} onPress={() => handleSongPress(song as any)}>
+              <View style={styles.trendingImagePlaceholder}>
+                <Text style={styles.trendingMusicIcon}>🎵</Text>
+              </View>
+              <Text style={styles.trendingSongTitle} numberOfLines={1}>{song.title}</Text>
+              <Text style={styles.trendingSongArtist} numberOfLines={1}>{song.artist}</Text>
+            </TouchableOpacity>
+          )) : exampleUrls.map((song, index) => (
+            <TouchableOpacity key={index} style={styles.trendingCard} onPress={() => setYoutubeUrl(song.url)}>
+              <View style={styles.trendingImagePlaceholder}>
+                <Text style={styles.trendingMusicIcon}>🎵</Text>
+              </View>
+              <Text style={styles.trendingSongTitle} numberOfLines={1}>{song.title}</Text>
+              <Text style={styles.trendingSongArtist} numberOfLines={1}>Example Artist</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      <View style={[styles.card, { marginTop: SPACING.xl }]}>
         <View style={styles.tabContainer}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'youtube' && styles.activeTab]}
@@ -341,7 +473,12 @@ const HomeScreen: React.FC = () => {
 
       {songs.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Continue Learning</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Recommended for you</Text>
+            <TouchableOpacity>
+              <Text style={styles.seeAllText}>See All</Text>
+            </TouchableOpacity>
+          </View>
           {songs.map((song) => (
             <TouchableOpacity
               key={song.id}
@@ -398,10 +535,9 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.xxl,
   },
   header: {
-    paddingTop: 80,
-    paddingBottom: SPACING.xl,
+    paddingTop: 60,
+    paddingBottom: SPACING.lg,
     paddingHorizontal: SPACING.lg,
-    alignItems: 'center',
   },
   headerTop: {
     flexDirection: 'row',
@@ -423,19 +559,26 @@ const styles = StyleSheet.create({
   profileIcon: {
     fontSize: 20,
   },
-  logo: {
-    fontSize: 48,
-    marginBottom: SPACING.xs,
-  },
-  title: {
-    ...TYPOGRAPHY.h1,
-    color: COLORS.primary,
-    marginBottom: SPACING.xs,
-  },
-  subtitle: {
-    ...TYPOGRAPHY.body,
+  greeting: {
+    ...TYPOGRAPHY.caption,
     color: COLORS.textSecondary,
-    opacity: 0.8,
+  },
+  userName: {
+    ...TYPOGRAPHY.h2,
+    color: COLORS.text,
+    fontWeight: 'bold',
+  },
+  searchContainer: {
+    marginTop: SPACING.md,
+  },
+  searchInput: {
+    backgroundColor: COLORS.surface,
+    color: COLORS.text,
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
   },
   card: {
     backgroundColor: COLORS.surface,
@@ -473,10 +616,19 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xl,
     paddingHorizontal: SPACING.lg,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
   sectionTitle: {
     ...TYPOGRAPHY.h3,
     color: COLORS.text,
-    marginBottom: SPACING.md,
+  },
+  seeAllText: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
   },
   sectionSubtitle: {
     ...TYPOGRAPHY.body,
@@ -725,6 +877,95 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginLeft: SPACING.md,
     textDecorationLine: 'underline',
+  },
+  practiceNowCard: {
+    backgroundColor: COLORS.surface,
+    marginHorizontal: SPACING.lg,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    ...SHADOWS.medium,
+  },
+  practiceNowContent: {
+    flex: 1,
+  },
+  practiceNowTitle: {
+    ...TYPOGRAPHY.h3,
+    color: COLORS.text,
+    fontWeight: 'bold',
+  },
+  practiceNowSubtitle: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.sm,
+  },
+  progressContainerSmall: {
+    marginTop: SPACING.xs,
+  },
+  progressBarSmall: {
+    height: 4,
+    backgroundColor: COLORS.surfaceLight,
+    borderRadius: 2,
+    width: '100%',
+    marginBottom: 4,
+  },
+  progressFillSmall: {
+    height: '100%',
+    backgroundColor: COLORS.primary,
+    borderRadius: 2,
+  },
+  progressTextSmall: {
+    fontSize: 10,
+    color: COLORS.textMuted,
+  },
+  practiceNowIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  playIconLarge: {
+    fontSize: 20,
+    color: COLORS.background,
+    marginLeft: 2,
+  },
+  trendingScroll: {
+    marginLeft: -SPACING.lg,
+    paddingLeft: SPACING.lg,
+  },
+  trendingCard: {
+    width: 140,
+    marginRight: SPACING.md,
+  },
+  trendingImagePlaceholder: {
+    width: 140,
+    height: 140,
+    backgroundColor: COLORS.surfaceLight,
+    borderRadius: BORDER_RADIUS.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+  },
+  trendingMusicIcon: {
+    fontSize: 40,
+  },
+  trendingSongTitle: {
+    ...TYPOGRAPHY.body,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    fontSize: 14,
+  },
+  trendingSongArtist: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+    fontSize: 12,
   },
 });
 

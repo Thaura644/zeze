@@ -7,7 +7,7 @@ const audioProcessingService = require('../services/audioProcessing');
 const authMiddleware = require('../middleware/auth');
 const validationMiddleware = require('../middleware/validation');
 const logger = require('../config/logger');
-const { query } = require('../config/database');
+const { query: dbQuery } = require('../config/database');
 
 async function analyzePracticeAudio(audioPath, songData) {
 
@@ -373,7 +373,7 @@ router.post('/analyze',
       }
 
       // Get song data for comparison
-      const songResult = await query('SELECT * FROM songs WHERE song_id = $1', [session.song_id]);
+      const songResult = await dbQuery('SELECT * FROM songs WHERE song_id = $1', [session.song_id]);
       const song = songResult.rows[0];
       if (!song) {
         return res.status(400).json({

@@ -13,7 +13,25 @@ interface SongsState {
 }
 
 const initialState: SongsState = {
-  songs: [],
+  songs: [
+    {
+      id: 'demo-1',
+      title: 'Wonderwall',
+      artist: 'Oasis',
+      duration: 258,
+      difficulty: 2,
+      tempo: 88,
+      key: 'G',
+      youtubeId: 'hLQl3wQQbQ0',
+      videoUrl: 'https://www.youtube.com/watch?v=hLQl3wQQbQ0',
+      chords: [
+        { name: 'G', startTime: 0, duration: 4, fingerPositions: [] },
+        { name: 'D', startTime: 4, duration: 4, fingerPositions: [] },
+        { name: 'Em', startTime: 8, duration: 4, fingerPositions: [] },
+        { name: 'C', startTime: 12, duration: 4, fingerPositions: [] },
+      ]
+    }
+  ],
   currentProcessingJob: null,
   processingStatus: 'idle',
   processingProgress: 0,
@@ -62,6 +80,30 @@ export const processYouTubeUrl = createAsyncThunk(
       }
       
       return rejectWithValue(errorMessage);
+    }
+  }
+);
+
+export const fetchPopularSongs = createAsyncThunk(
+  'songs/fetchPopular',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await ApiService.getPopularSongs(10);
+      return response.data?.songs || [];
+    } catch (error: any) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const fetchRecommendedSongs = createAsyncThunk(
+  'songs/fetchRecommended',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await ApiService.getRecommendedSongs(10);
+      return response.data?.songs || [];
+    } catch (error: any) {
+      return rejectWithValue(error.message);
     }
   }
 );
@@ -220,6 +262,44 @@ const songsSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+      .addCase(fetchPopularSongs.fulfilled, (state, action) => {
+        // We could store them separately or merge into songs
+        action.payload.forEach((song: any) => {
+          if (!state.songs.find(s => s.id === (song.song_id || song.id))) {
+             // Map backend song to frontend Song type if necessary
+             state.songs.push({
+               id: song.song_id || song.id,
+               title: song.title,
+               artist: song.artist,
+               duration: song.duration_seconds || song.duration,
+               difficulty: song.overall_difficulty || song.difficulty,
+               tempo: song.tempo_bpm || song.tempo,
+               key: song.original_key || song.key,
+               youtubeId: '',
+               videoUrl: '',
+               chords: []
+             });
+          }
+        });
+      })
+      .addCase(fetchRecommendedSongs.fulfilled, (state, action) => {
+        action.payload.forEach((song: any) => {
+          if (!state.songs.find(s => s.id === (song.song_id || song.id))) {
+             state.songs.push({
+               id: song.song_id || song.id,
+               title: song.title,
+               artist: song.artist,
+               duration: song.duration_seconds || song.duration,
+               difficulty: song.overall_difficulty || song.difficulty,
+               tempo: song.tempo_bpm || song.tempo,
+               key: song.original_key || song.key,
+               youtubeId: '',
+               videoUrl: '',
+               chords: []
+             });
+          }
+        });
+      })
       .addCase(processYouTubeUrl.pending, (state) => {
         state.loading = true;
         state.error = null;

@@ -26,7 +26,7 @@ const PlayerScreen: React.FC = () => {
     loading,
   } = useSelector((state: RootState) => state.player);
 
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
 
   React.useEffect(() => {
     if (!currentSong && !loading) {

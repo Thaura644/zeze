@@ -18,7 +18,7 @@ const STORAGE_KEYS = {
 
 interface OfflinePracticeSession {
   id: string;
-  song_id: number;
+  song_id: string;
   started_at: string;
   ended_at?: string;
   duration: number;
@@ -93,7 +93,7 @@ class OfflineService {
   /**
    * Remove a song from offline storage
    */
-  async removeSongOffline(songId: number): Promise<void> {
+  async removeSongOffline(songId: string): Promise<void> {
     try {
       const offlineSongs = await this.getOfflineSongs();
       const filteredSongs = offlineSongs.filter(s => s.id !== songId);
@@ -113,7 +113,7 @@ class OfflineService {
   /**
    * Check if a song is available offline
    */
-  async isSongAvailableOffline(songId: number): Promise<boolean> {
+  async isSongAvailableOffline(songId: string): Promise<boolean> {
     try {
       const offlineSongs = await this.getOfflineSongs();
       return offlineSongs.some(s => s.id === songId);

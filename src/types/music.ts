@@ -26,6 +26,7 @@ export interface Song {
   difficulty: number;
   processedAt?: string;
   audioUrl?: string;
+  offline_downloaded_at?: string;
 }
 
 export interface Technique {

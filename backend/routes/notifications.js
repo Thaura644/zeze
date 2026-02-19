@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const notificationService = require('../services/notificationService');
-const { authenticateToken } = require('../middleware/auth');
+const authMiddleware = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
 const logger = require('../config/logger');
 
@@ -11,7 +11,7 @@ const logger = require('../config/logger');
  * @access  Private
  */
 router.post('/register',
-  authenticateToken,
+  authMiddleware.authenticate(),
   [
     body('pushToken').notEmpty().withMessage('Push token is required'),
     body('deviceInfo').optional().isObject(),
@@ -59,7 +59,7 @@ router.post('/register',
  * @access  Private
  */
 router.post('/unregister',
-  authenticateToken,
+  authMiddleware.authenticate(),
   [
     body('pushToken').notEmpty().withMessage('Push token is required'),
   ],
@@ -105,7 +105,7 @@ router.post('/unregister',
  * @access  Private
  */
 router.post('/send',
-  authenticateToken,
+  authMiddleware.authenticate(),
   [
     body('title').notEmpty().withMessage('Title is required'),
     body('body').notEmpty().withMessage('Body is required'),
@@ -158,7 +158,7 @@ router.post('/send',
  * @desc    Get notification preferences
  * @access  Private
  */
-router.get('/preferences', authenticateToken, async (req, res) => {
+router.get('/preferences', authMiddleware.authenticate(), async (req, res) => {
   try {
     const preferences = await notificationService.getNotificationPreferences(req.user.id);
 
@@ -192,7 +192,7 @@ router.get('/preferences', authenticateToken, async (req, res) => {
  * @access  Private
  */
 router.put('/preferences',
-  authenticateToken,
+  authMiddleware.authenticate(),
   [
     body('notifications_enabled').optional().isBoolean(),
     body('daily_reminder_time').optional().matches(/^([01]\d|2[0-3]):([0-5]\d)$/),
@@ -239,7 +239,7 @@ router.put('/preferences',
  * @desc    Send a test notification
  * @access  Private
  */
-router.post('/test', authenticateToken, async (req, res) => {
+router.post('/test', authMiddleware.authenticate(), async (req, res) => {
   try {
     const result = await notificationService.sendNotification(
       req.user.id,

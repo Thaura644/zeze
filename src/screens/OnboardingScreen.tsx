@@ -30,8 +30,8 @@ interface OnboardingStep {
 const ONBOARDING_STEPS: OnboardingStep[] = [
   {
     id: 'welcome',
-    title: 'Welcome to ZEZE',
-    description: 'Play any song, any key — instantly.', 
+    title: 'ZEZE',
+    description: 'Learn any song, any key, any technique',
     type: 'welcome',
   },
   {
@@ -115,10 +115,18 @@ const OnboardingScreen = ({
       case 'welcome':
         return (
           <View style={styles.stepContainer}>
-            <GuitarLogo size={120} style={styles.logo} />
-            <Text style={styles.title}>{item.title}</Text>
-            <Text style={styles.description}>{item.description}</Text>
-            <Text style={styles.microcopy}>No cloud required — your audio stays local.</Text>
+            <View style={styles.welcomeContent}>
+              <GuitarLogo size={150} style={styles.logo} />
+              <Text style={styles.welcomeTitle}>{item.title}</Text>
+              <Text style={styles.welcomeSubtitle}>{item.description}</Text>
+
+              <TouchableOpacity
+                style={styles.getStartedButton}
+                onPress={handleNext}
+              >
+                <Text style={styles.getStartedButtonText}>Get Started</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         );
       case 'carousel':
@@ -254,6 +262,7 @@ const OnboardingScreen = ({
         }}
       />
 
+      {currentStep > 0 && (
       <View style={styles.footer}>
         <View style={styles.pagination}>
           {ONBOARDING_STEPS.map((_, index) => {
@@ -282,6 +291,7 @@ const OnboardingScreen = ({
           </TouchableOpacity>
         ) : null}
       </View>
+      )}
     </SafeAreaView>
   );
 };
@@ -314,6 +324,38 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     textAlign: 'center',
     marginBottom: SPACING.md,
+  },
+  welcomeContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    width: '100%',
+  },
+  welcomeTitle: {
+    ...TYPOGRAPHY.h1 as TextStyle,
+    color: COLORS.text,
+    fontSize: 64,
+    fontWeight: '900',
+    marginBottom: SPACING.xs,
+  },
+  welcomeSubtitle: {
+    ...TYPOGRAPHY.body as TextStyle,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    fontSize: 18,
+    marginBottom: SPACING.xxl,
+  },
+  getStartedButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xxl,
+    borderRadius: BORDER_RADIUS.round,
+    ...SHADOWS.medium,
+  },
+  getStartedButtonText: {
+    ...TYPOGRAPHY.button as TextStyle,
+    color: COLORS.background,
+    fontSize: 18,
   },
   description: {
     ...TYPOGRAPHY.body as TextStyle,

@@ -928,6 +928,27 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.button,
     color: COLORS.text,
   },
+  noAudioContainer: {
+    backgroundColor: COLORS.surfaceLight,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    borderStyle: 'dashed',
+  },
+  noAudioText: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.text,
+    fontWeight: 'bold',
+    marginBottom: SPACING.xs,
+  },
+  noAudioSubtext: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
 });
 
 export default UnifiedAudioPlayer;

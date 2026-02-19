@@ -68,23 +68,28 @@ const ChordDisplay: React.FC<ChordDisplayProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    padding: 20,
-    marginVertical: 10,
+    backgroundColor: '#1E1E1E',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#3a3a3a',
+    marginVertical: 10,
+    borderWidth: 4,
+    borderColor: '#FFD700',
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 10,
   },
   chordInfo: {
     alignItems: 'center',
-    marginBottom: 15,
   },
   chordName: {
     fontSize: 48,
     fontWeight: 'bold',
-    color: '#ff6b6b',
-    marginBottom: 5,
+    color: '#FFFFFF',
   },
   chordTiming: {
     fontSize: 14,
@@ -92,9 +97,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   fingerPositions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
+    display: 'none',
   },
   fingerPosition: {
     backgroundColor: '#3a3a3a',
