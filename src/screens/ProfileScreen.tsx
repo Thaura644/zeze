@@ -22,7 +22,7 @@ const { width } = Dimensions.get('window');
 
 const ProfileScreen: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
-    const navigation = useNavigation();
+    const navigation = useNavigation<any>();
     const { user, history, loading, error } = useSelector((state: RootState) => state.profile);
     const [refreshing, setRefreshing] = useState(false);
 
@@ -45,6 +45,23 @@ const ProfileScreen: React.FC = () => {
         setRefreshing(true);
         await loadData();
         setRefreshing(false);
+    };
+
+    const handleUpdateTier = async (newTier: string) => {
+        try {
+            await dispatch(updateUserProfile({ subscription_tier: newTier } as any)).unwrap();
+            Toast.show({
+                type: 'success',
+                text1: 'Tier Updated',
+                text2: `You are now on the ${newTier} plan`,
+            });
+        } catch (err) {
+            Toast.show({
+                type: 'error',
+                text1: 'Update Failed',
+                text2: 'Could not update subscription',
+            });
+        }
     };
 
     const handleUpdateSkill = async (newLevel: number) => {
@@ -92,6 +109,9 @@ const ProfileScreen: React.FC = () => {
                 <View style={styles.levelBadge}>
                     <Text style={styles.levelText}>Level {user?.skill_level || 1} Enthusiast</Text>
                 </View>
+                <View style={[styles.levelBadge, { marginTop: 8, backgroundColor: 'rgba(255, 215, 0, 0.2)', borderColor: '#FFD700' }]}>
+                    <Text style={[styles.levelText, { color: '#FFD700' }]}>{(user as any)?.subscription_tier?.toUpperCase() || 'FREE'} PLAN</Text>
+                </View>
             </View>
 
             {/* Stats Grid */}
@@ -115,6 +135,30 @@ const ProfileScreen: React.FC = () => {
                     <Text style={styles.statEmoji}>🎸</Text>
                     <Text style={styles.statValue}>{user?.songs_learned || 0}</Text>
                     <Text style={styles.statLabel}>Songs Mastered</Text>
+                </View>
+            </View>
+
+            {/* Subscription Section */}
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Subscription Plan</Text>
+                <View style={styles.card}>
+                    <View style={styles.tierButtons}>
+                        {['free', 'basic', 'premium'].map((t) => (
+                            <TouchableOpacity
+                                key={t}
+                                style={[
+                                    styles.tierButton,
+                                    (user as any)?.subscription_tier === t && styles.tierButtonActive
+                                ]}
+                                onPress={() => handleUpdateTier(t)}
+                            >
+                                <Text style={[
+                                    styles.tierButtonText,
+                                    (user as any)?.subscription_tier === t && styles.tierButtonTextActive
+                                ]}>{t.toUpperCase()}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
                 </View>
             </View>
 
@@ -314,6 +358,31 @@ const styles = StyleSheet.create({
     },
     skillButtonTextActive: {
         color: COLORS.text,
+    },
+    tierButtons: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    tierButton: {
+        flex: 1,
+        paddingVertical: 8,
+        borderRadius: 8,
+        backgroundColor: COLORS.surfaceLight,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: COLORS.glassBorder,
+    },
+    tierButtonActive: {
+        backgroundColor: COLORS.primary,
+        borderColor: COLORS.primary,
+    },
+    tierButtonText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        color: COLORS.textSecondary,
+    },
+    tierButtonTextActive: {
+        color: COLORS.background,
     },
     skillDescription: {
         color: COLORS.textSecondary,

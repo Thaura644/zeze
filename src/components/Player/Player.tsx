@@ -22,6 +22,7 @@ import useAudioSync from '@/hooks/useAudioSync';
 import usePracticeSession from '@/hooks/usePracticeSession';
 import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS, SHADOWS } from '@/constants/theme';
 import { LEARNING_ROAMMAP } from '@/data/learningRoadmap';
+import { isFeatureEnabled, SubscriptionTier } from '@/constants/plans';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -57,6 +58,9 @@ const Player: React.FC<PlayerProps> = ({ song, onBack }) => {
     currentChordIndex,
     loading,
   } = useSelector((state: RootState) => state.player);
+
+  const { user } = useSelector((state: RootState) => state.profile);
+  const userTier: SubscriptionTier = (user as any)?.subscription_tier || 'free';
 
   const practiceSession = usePracticeSession();
 
@@ -174,6 +178,16 @@ const Player: React.FC<PlayerProps> = ({ song, onBack }) => {
         type: 'success',
         text1: 'Song Complete',
         text2: 'Great job! You finished the song.',
+      });
+
+      // Navigate to results screen
+      (navigation as any)?.navigate('PracticeResults', {
+        results: {
+          accuracy: 85, // Mock result for now
+          time: formatTime(currentTime),
+          chordsPlayed: currentChordIndex + 1,
+          feedback: "Great session! You're making progress on your timing."
+        }
       });
     }
 
@@ -340,30 +354,64 @@ const Player: React.FC<PlayerProps> = ({ song, onBack }) => {
           <Text style={styles.suppressionText}>Full Audio</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.suppressionButton, activeStem === 'vocals' && styles.suppressionButtonActive]}
-          onPress={() => setActiveStem('vocals')}
+          style={[
+            styles.suppressionButton,
+            activeStem === 'vocals' && styles.suppressionButtonActive,
+            !isFeatureEnabled(userTier, 'hasStems') && styles.suppressionButtonDisabled
+          ]}
+          onPress={() => {
+            if (isFeatureEnabled(userTier, 'hasStems')) {
+              setActiveStem('vocals');
+            } else {
+              Toast.show({ type: 'info', text1: 'Premium Feature', text2: 'Upgrade to Legend to isolate vocals' });
+            }
+          }}
         >
           <Text style={styles.suppressionText}>Vocals Only</Text>
+          {!isFeatureEnabled(userTier, 'hasStems') && <Text style={styles.lockIcon}>🔒</Text>}
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.suppressionButton, activeStem === 'instrumental' && styles.suppressionButtonActive]}
-          onPress={() => setActiveStem('instrumental')}
+          style={[
+            styles.suppressionButton,
+            activeStem === 'instrumental' && styles.suppressionButtonActive,
+            !isFeatureEnabled(userTier, 'hasStems') && styles.suppressionButtonDisabled
+          ]}
+          onPress={() => {
+            if (isFeatureEnabled(userTier, 'hasStems')) {
+              setActiveStem('instrumental');
+            } else {
+              Toast.show({ type: 'info', text1: 'Premium Feature', text2: 'Upgrade to Legend to isolate instruments' });
+            }
+          }}
         >
           <Text style={styles.suppressionText}>No Vocals</Text>
+          {!isFeatureEnabled(userTier, 'hasStems') && <Text style={styles.lockIcon}>🔒</Text>}
         </TouchableOpacity>
       </View>
 
       {/* Main Content */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Current Chord Display */}
+        {/* Chord Circle Indicators */}
+        <View style={styles.chordIndicatorSection}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chordScrollContent}>
+            {song.chords.slice(Math.max(0, currentChordIndex - 2), currentChordIndex + 5).map((chord, index) => {
+              const actualIndex = Math.max(0, currentChordIndex - 2) + index;
+              const isActive = actualIndex === currentChordIndex;
+              return (
+                <View key={index} style={[styles.chordCircle, isActive && styles.chordCircleActive]}>
+                  <Text style={[styles.chordCircleText, isActive && styles.chordCircleTextActive]}>{chord.name}</Text>
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {/* Current Chord Display (Large) */}
         <View style={styles.chordSection}>
           <ChordDisplay
             chord={currentChord}
             isHighlighted={true}
           />
-          {currentChord && (
-            <Text style={styles.chordName}>{currentChord.name}</Text>
-          )}
         </View>
 
         {/* Interactive Fretboard */}
@@ -616,14 +664,39 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: SPACING.md,
   },
+  chordIndicatorSection: {
+    marginVertical: SPACING.md,
+  },
+  chordScrollContent: {
+    paddingHorizontal: SPACING.lg,
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  chordCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: COLORS.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+  },
+  chordCircleActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.surfaceLight,
+    borderWidth: 2,
+  },
+  chordCircleText: {
+    color: COLORS.textSecondary,
+    fontWeight: 'bold',
+  },
+  chordCircleTextActive: {
+    color: COLORS.primary,
+  },
   chordSection: {
     alignItems: 'center',
-    marginVertical: SPACING.lg,
-  },
-  chordName: {
-    color: COLORS.primary,
-    ...TYPOGRAPHY.h2,
-    marginTop: SPACING.md,
+    marginVertical: SPACING.md,
   },
   fretboardSection: {
     marginVertical: SPACING.lg,
@@ -710,6 +783,15 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  suppressionButtonDisabled: {
+    opacity: 0.5,
+  },
+  lockIcon: {
+    fontSize: 10,
+    position: 'absolute',
+    top: 2,
+    right: 2,
   },
   smallControlButton: {
     padding: SPACING.sm,

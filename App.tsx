@@ -26,6 +26,7 @@ import PlayerScreen from '@/screens/PlayerScreen';
 import LoadingScreen from '@/screens/LoadingScreen';
 import ProfileScreen from '@/screens/ProfileScreen';
 import LearningView from '@/screens/LearningView';
+import PracticeResultsScreen from '@/screens/PracticeResultsScreen';
 import ApiService from '@/services/api';
 import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS, SHADOWS } from '@/constants/theme';
 import OnboardingScreen from '@/screens/OnboardingScreen';
@@ -276,6 +277,11 @@ const AuthenticatedApp = () => {
         name="Learning"
         component={LearningView}
         options={{ title: 'Learn Guitar', headerShown: false }}
+      />
+      <Stack.Screen
+        name="PracticeResults"
+        component={PracticeResultsScreen}
+        options={{ title: 'Practice Results', headerShown: false }}
       />
     </Stack.Navigator>
   );

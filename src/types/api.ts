@@ -58,6 +58,11 @@ export interface SongResults {
   techniques: TechniqueData[];
 }
 
+export interface FingerPosition {
+  string: number;
+  fret: number;
+}
+
 export interface ChordData {
   chord: string;
   startTime: number;

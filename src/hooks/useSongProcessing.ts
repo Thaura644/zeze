@@ -61,23 +61,24 @@ export const useSongProcessing = (): UseSongProcessingReturn => {
       const response: ProcessingResponse = await AudioProcessingService.processYouTubeUrl(request);
 
       if (response.status === 'completed' && response.results) {
+        const results = response.results;
         const song: Song = {
-          id: response.results.song_id,
-          title: response.results.title,
-          artist: response.results.artist,
+          id: results.song_id,
+          title: results.metadata.title,
+          artist: results.metadata.artist,
           youtubeId: '', // Extract from URL if needed
-          videoUrl: response.results.video_url || '',
-          duration: response.results.duration,
-          tempo: response.results.tempo,
-          key: response.results.key,
-          chords: response.results.chords.map(chord => ({
-            name: chord.name,
-            startTime: chord.startTime,
+          videoUrl: results.metadata.video_url || '',
+          duration: results.metadata.duration,
+          tempo: results.metadata.tempo_bpm,
+          key: results.metadata.original_key,
+          chords: results.chords.map(chord => ({
+            name: chord.chord,
+            startTime: chord.start_time,
             duration: chord.duration,
-            fingerPositions: chord.fingerPositions,
+            fingerPositions: chord.fingerPositions || [],
           })),
-          difficulty: response.results.difficulty,
-          processedAt: new Date(response.results.processed_at || Date.now()).toISOString(),
+          difficulty: results.metadata.overall_difficulty,
+          processedAt: new Date(results.processed_at || Date.now()).toISOString(),
         };
 
         updateState({
@@ -115,27 +116,28 @@ export const useSongProcessing = (): UseSongProcessingReturn => {
         (statusUpdate) => {
           updateState({
             progress: statusUpdate.progress_percentage,
-            current_step: statusUpdate.current_step,
-          } as any);
+            currentStep: statusUpdate.current_step,
+          });
         }
       );
 
+      const results = status;
       const song: Song = {
-        id: jobId.replace('job_', 'song_'),
-        title: status.title,
-        artist: status.artist,
+        id: results.song_id || jobId.replace('job_', 'song_'),
+        title: results.metadata?.title || results.title || 'Unknown Title',
+        artist: results.metadata?.artist || results.artist || 'Unknown Artist',
         youtubeId: '', // Extract from URL if needed
-        videoUrl: status.video_url || '',
-        duration: status.duration,
-        tempo: status.tempo,
-        key: status.key,
-        chords: status.chords.map(chord => ({
-          name: chord.name,
-          startTime: chord.startTime,
+        videoUrl: results.metadata?.video_url || results.video_url || '',
+        duration: results.metadata?.duration || results.duration || 0,
+        tempo: results.metadata?.tempo_bpm || results.tempo || 120,
+        key: results.metadata?.original_key || results.key || 'C',
+        chords: (results.chords || []).map((chord: any) => ({
+          name: chord.chord || chord.name,
+          startTime: chord.start_time || chord.startTime,
           duration: chord.duration,
-          fingerPositions: chord.fingerPositions,
+          fingerPositions: chord.fingerPositions || [],
         })),
-        difficulty: status.difficulty,
+        difficulty: results.metadata?.overall_difficulty || results.difficulty || 3,
         processedAt: new Date().toISOString(),
       };
 

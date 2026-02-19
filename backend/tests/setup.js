@@ -60,7 +60,7 @@ global.testUtils = {
 };
 
 // Mock external services
-jest.mock('ytdl-core', () => ({
+jest.mock('@distube/ytdl-core', () => ({
   getInfo: jest.fn(() => Promise.resolve({
     videoDetails: {
       title: 'Test Video',

@@ -143,7 +143,7 @@ export interface AnalysisResults {
 }
 
 class ApiService {
-  private api: any;
+  public api: any;
 
   constructor() {
     this.api = axios.create({
@@ -691,4 +691,6 @@ class ApiService {
   }
 }
 
-export default new ApiService();
+const apiService = new ApiService();
+export const apiClient = apiService.api;
+export default apiService;

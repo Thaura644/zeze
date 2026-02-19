@@ -7,6 +7,8 @@ const audioProcessingService = require('../services/audioProcessing');
 const songService = require('../services/songService');
 const authMiddleware = require('../middleware/auth');
 const validationMiddleware = require('../middleware/validation');
+const { checkTierLimit } = require('../middleware/tier');
+const { query: dbQuery } = require('../config/database');
 const logger = require('../config/logger');
 
 // Configure multer for audio uploads
@@ -59,6 +61,7 @@ const upload = multer({
 // Process Audio File Upload
 router.post('/process-audio',
   authMiddleware.authenticate(),
+  checkTierLimit('dailyProcesses'),
   (req, res, next) => {
     logger.info('Authentication passed, processing upload middleware');
     next();
@@ -83,6 +86,16 @@ router.post('/process-audio',
         userPreferences = req.body.user_preferences ? JSON.parse(req.body.user_preferences) : {};
       } catch (parseError) {
         logger.warn('Failed to parse user_preferences, using defaults', { error: parseError.message });
+      }
+
+      // Record job for tier tracking
+      try {
+        await dbQuery(
+          'INSERT INTO processing_jobs (user_id, status) VALUES ($1, $2)',
+          [req.user.id, 'processing']
+        );
+      } catch (jobError) {
+        logger.warn('Failed to record processing job', { error: jobError.message });
       }
 
       // Start processing
@@ -194,6 +207,7 @@ router.post('/process-audio',
 // Process YouTube URL
 router.post('/process-youtube',
   authMiddleware.authenticate(),
+  checkTierLimit('dailyProcesses'),
   validationMiddleware.validateYouTubeProcessing,
   async (req, res) => {
     try {
@@ -234,6 +248,16 @@ router.post('/process-youtube',
         } catch (dbError) {
           logger.warn('Database lookup failed, continuing with processing', { error: dbError.message });
         }
+      }
+
+      // Record job for tier tracking
+      try {
+        await dbQuery(
+          'INSERT INTO processing_jobs (user_id, youtube_id, status) VALUES ($1, $2, $3)',
+          [req.user.id, videoId, 'processing']
+        );
+      } catch (jobError) {
+        logger.warn('Failed to record processing job', { error: jobError.message });
       }
 
       // Process the YouTube URL

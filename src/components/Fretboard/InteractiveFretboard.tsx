@@ -126,7 +126,7 @@ const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   };
 
   const renderFrets = () => {
-    const frets: JSX.Element[] = [];
+    const frets: React.ReactNode[] = [];
     for (let i = 1; i <= fretCount; i++) {
       const isOctaveFret = i % 12 === 0;
       const fretColor = isOctaveFret ? "#ffd700" : "#c0c0c0";
@@ -147,7 +147,7 @@ const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   };
 
   const renderStrings = () => {
-    const strings: JSX.Element[] = [];
+    const strings: React.ReactNode[] = [];
     for (let i = 0; i < stringCount; i++) {
       const strokeWidth = i < 2 ? 3 : i < 4 ? 2.5 : 2;
       
@@ -169,7 +169,7 @@ const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   const renderFretNumbers = () => {
     if (!showFretNumbers) return null;
     
-    const numbers: JSX.Element[] = [];
+    const numbers: React.ReactNode[] = [];
     for (let i = 1; i <= fretCount; i += 2) {
       numbers.push(
         <SvgText
@@ -190,7 +190,7 @@ const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   const renderTuningNotes = () => {
     if (!showTuningNotes) return null;
     
-    const notes: JSX.Element[] = [];
+    const notes: React.ReactNode[] = [];
     for (let i = 0; i < stringCount; i++) {
       notes.push(
         <SvgText
@@ -212,7 +212,7 @@ const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   const renderChordDots = () => {
     if (!currentChord) return null;
     
-    const dots: JSX.Element[] = [];
+    const dots: React.ReactNode[] = [];
     currentChord.fingerPositions.forEach((position, index) => {
       const transposedPosition = getTransposedPosition(position);
       const x = transposedPosition.fret === 0 ? fretWidth / 2 : transposedPosition.fret * fretWidth - fretWidth / 2;
@@ -276,7 +276,7 @@ const InteractiveFretboard: React.FC<InteractiveFretboardProps> = ({
   };
 
   const renderPositionMarkers = () => {
-    const markers: JSX.Element[] = [];
+    const markers: React.ReactNode[] = [];
     const dotPositions = [
       { fret: 3, strings: [1, 3] },
       { fret: 5, strings: [0, 2, 4] },

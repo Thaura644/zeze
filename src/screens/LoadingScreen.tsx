@@ -15,8 +15,12 @@ const LoadingScreen: React.FC = () => {
         <Text style={styles.subtitle}>Analyzing the strings of your favorite songs...</Text>
       </View>
       <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Tuning with AI</Text>
+        <View style={styles.circularProgressContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} style={styles.spinner} />
+          <Text style={styles.progressPercent}>75%</Text>
+        </View>
+        <Text style={styles.analysisTitle}>AI Analysis in progress...</Text>
+        <Text style={styles.analysisSubtitle}>Detecting chords and techniques...</Text>
       </View>
     </View>
   );
@@ -53,14 +57,36 @@ const styles = StyleSheet.create({
   },
   loaderContainer: {
     alignItems: 'center',
-    gap: SPACING.md,
+    width: '100%',
   },
-  loadingText: {
-    ...TYPOGRAPHY.caption,
-    fontSize: 12,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    color: COLORS.secondary,
+  circularProgressContainer: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    borderWidth: 10,
+    borderColor: COLORS.surfaceLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: SPACING.xl,
+  },
+  spinner: {
+    position: 'absolute',
+    transform: [{ scale: 4 }],
+    opacity: 0.3,
+  },
+  progressPercent: {
+    ...TYPOGRAPHY.h1,
+    color: COLORS.primary,
+    fontSize: 48,
+  },
+  analysisTitle: {
+    ...TYPOGRAPHY.h2,
+    color: COLORS.text,
+    marginBottom: SPACING.sm,
+  },
+  analysisSubtitle: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
   },
 });
 

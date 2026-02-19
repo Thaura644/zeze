@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const paymentService = require('../services/paymentService');
-const { authenticateToken } = require('../middleware/auth');
+const authMiddleware = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
 const logger = require('../config/logger');
 
@@ -30,7 +30,7 @@ router.get('/plans', (req, res) => {
  * @desc    Get current subscription details
  * @access  Private
  */
-router.get('/subscription', authenticateToken, async (req, res) => {
+router.get('/subscription', authMiddleware.authenticate(), async (req, res) => {
   try {
     const subscription = await paymentService.getSubscriptionDetails(req.user.id);
 
@@ -60,7 +60,7 @@ router.get('/subscription', authenticateToken, async (req, res) => {
  * @access  Private
  */
 router.post('/subscription',
-  authenticateToken,
+  authMiddleware.authenticate(),
   [
     body('tier').isIn(['free', 'basic', 'premium']).withMessage('Invalid subscription tier'),
   ],
@@ -104,7 +104,7 @@ router.post('/subscription',
  * @access  Private
  */
 router.put('/subscription',
-  authenticateToken,
+  authMiddleware.authenticate(),
   [
     body('tier').isIn(['free', 'basic', 'premium']).withMessage('Invalid subscription tier'),
   ],
@@ -148,7 +148,7 @@ router.put('/subscription',
  * @access  Private
  */
 router.delete('/subscription',
-  authenticateToken,
+  authMiddleware.authenticate(),
   async (req, res) => {
     try {
       const { immediate } = req.query;
@@ -181,7 +181,7 @@ router.delete('/subscription',
  * @desc    Get payment history
  * @access  Private
  */
-router.get('/history', authenticateToken, async (req, res) => {
+router.get('/history', authMiddleware.authenticate(), async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
 
@@ -209,7 +209,7 @@ router.get('/history', authenticateToken, async (req, res) => {
  * @desc    Check if user has premium access
  * @access  Private
  */
-router.get('/access', authenticateToken, async (req, res) => {
+router.get('/access', authMiddleware.authenticate(), async (req, res) => {
   try {
     const hasPremium = await paymentService.hasPremiumAccess(req.user.id);
 
