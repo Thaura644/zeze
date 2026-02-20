@@ -6,6 +6,14 @@
  */
 
 require('dotenv').config();
+
+// Polyfill for Node.js environments where File/Blob are not global (e.g. Node < 20)
+if (typeof global.File === 'undefined' || typeof global.Blob === 'undefined') {
+  const { File, Blob } = require('node:buffer');
+  if (typeof global.File === 'undefined') global.File = File;
+  if (typeof global.Blob === 'undefined') global.Blob = Blob;
+}
+
 const fs = require('fs').promises;
 const path = require('path');
 const { query, pool } = require('../config/database');
