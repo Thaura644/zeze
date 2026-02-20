@@ -19,8 +19,10 @@ import GuitarLogo from '@/components/GuitarLogo';
 import { Provider, useDispatch } from 'react-redux';
 import Toast from 'react-native-toast-message';
 import CodePushWrapper from './components/CodePushWrapper';
+import NotificationWrapper from './components/NotificationWrapper';
 
 import { store } from '@/store';
+import { setUser } from '@/store/slices/userSlice';
 import HomeScreen from '@/screens/HomeScreen';
 import PlayerScreen from '@/screens/PlayerScreen';
 import LoadingScreen from '@/screens/LoadingScreen';
@@ -57,7 +59,12 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
     setLoading(true);
     try {
       const response = await ApiService.login(email, password);
-      if (response.data?.tokens) {
+      if (response.data?.tokens && response.data?.user) {
+        store.dispatch(setUser({
+          id: response.data.user.id,
+          email: response.data.user.email || '',
+          displayName: response.data.user.display_name,
+        }));
         onLogin();
         Toast.show({
           type: 'success',
@@ -105,7 +112,12 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
         display_name: username,
       });
 
-      if (response.data?.tokens) {
+      if (response.data?.tokens && response.data?.user) {
+        store.dispatch(setUser({
+          id: response.data.user.id,
+          email: response.data.user.email || '',
+          displayName: response.data.user.display_name,
+        }));
         onLogin();
         Toast.show({
           type: 'success',
@@ -322,7 +334,24 @@ const App: React.FC = () => {
         // 2. Check auth
         const tokens = await ApiService.getStoredTokens();
         if (tokens?.accessToken) {
-          setIsLoggedIn(true);
+          // Fetch user profile to populate store
+          try {
+            const profileResponse = await ApiService.getUserProfile();
+            if (profileResponse.data) {
+              store.dispatch(setUser({
+                id: profileResponse.data.id,
+                email: profileResponse.data.email || '',
+                displayName: profileResponse.data.display_name,
+              }));
+              setIsLoggedIn(true);
+            } else {
+              // Token might be invalid or expired
+              setIsLoggedIn(false);
+            }
+          } catch (e) {
+            console.error('Failed to fetch profile during init:', e);
+            setIsLoggedIn(false);
+          }
         }
       } catch (error) {
         console.error('App init error:', error);
@@ -351,7 +380,12 @@ const App: React.FC = () => {
     try {
       const deviceId = await getDeviceId();
       const response = await ApiService.guestLogin(deviceId);
-      if (response.data?.tokens) {
+      if (response.data?.tokens && response.data?.user) {
+        store.dispatch(setUser({
+          id: response.data.user.id,
+          email: response.data.user.email || '',
+          displayName: response.data.user.display_name,
+        }));
         setIsLoggedIn(true);
         await handleOnboardingComplete();
         Toast.show({
@@ -421,7 +455,9 @@ const App: React.FC = () => {
                 notification: COLORS.secondary,
               }
             }}>
-              <AuthenticatedApp />
+              <NotificationWrapper>
+                <AuthenticatedApp />
+              </NotificationWrapper>
             </NavigationContainer>
           )}
         </CodePushWrapper>
