@@ -202,7 +202,7 @@ router.get('/history', async (req, res) => {
 // Force update notification (for emergency updates)
 router.post('/force-update', async (req, res) => {
   try {
-    const { platform, min_version, message } = req.body;
+    const { platform, min_version, current_version, force_update = true, message } = req.body;
     
     if (!platform || !min_version) {
       return res.status(400).json({
@@ -211,8 +211,15 @@ router.post('/force-update', async (req, res) => {
       });
     }
     
-    // In a real implementation, this would update the environment variables
-    // or a database table that stores version requirements
+    // Update database table that stores version requirements
+    await dbQuery(`
+      UPDATE app_versions
+      SET min_version = $1,
+          current_version = COALESCE($2, current_version),
+          force_update = $3,
+          updated_at = NOW()
+      WHERE platform = $4
+    `, [min_version, current_version, force_update, platform]);
     
     logger.warn('Force update triggered', {
       platform,

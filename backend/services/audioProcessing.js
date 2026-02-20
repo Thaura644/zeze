@@ -570,8 +570,16 @@ class AudioProcessingService {
         if (clarity > 0.5) {
           const noteInfo = this.pitchToNote(pitch);
           chordName = noteInfo.note;
-          // Basic heuristic: if it's the root note's 3rd or 6th, it might be minor
-          // For now, we'll just return the detected note as a major chord
+
+          // Enhanced heuristic: detect minor and 7th chords based on chroma-like analysis
+          // In a production app, we would use a more sophisticated FFT-based chroma analysis
+          const intervalAnalysis = this.analyzeIntervals(intervalData, sampleRate, pitch);
+          if (intervalAnalysis.isMinor) {
+            chordName += 'm';
+          }
+          if (intervalAnalysis.isSeventh) {
+            chordName += '7';
+          }
         } else {
           // Fallback to a progression based on the key
           const progression = [rootNote, 'G', 'Am', 'F'];
@@ -688,7 +696,42 @@ class AudioProcessingService {
     const n = Math.round(12 * Math.log2(frequency / 440)) + 69;
     const noteName = notes[n % 12];
     const octave = Math.floor(n / 12) - 1;
-    return { note: noteName, octave };
+    return { note: noteName, octave, semitone: n % 12 };
+  }
+
+  analyzeIntervals(audioData, sampleRate, rootPitch) {
+    // Spectral analysis for intervals
+    // In production-scale, we use a simple energy distribution check
+    // We look for dominant frequencies that match 3rd and 7th intervals
+
+    const rootFreq = rootPitch;
+    const minorThirdFreq = rootFreq * Math.pow(2, 3/12);
+    const majorThirdFreq = rootFreq * Math.pow(2, 4/12);
+    const minorSeventhFreq = rootFreq * Math.pow(2, 10/12);
+
+    // Check energy at these frequencies (using simple bandpass-like check)
+    // For a real implementation, we would use FFT bins.
+    // Here we use a heuristic based on the variance of the signal
+    const calculateEnergyAt = (freq) => {
+      // Simple comb filter to check for periodicity at target frequency
+      const period = Math.round(sampleRate / freq);
+      if (period <= 0) return 0;
+
+      let energy = 0;
+      for (let i = period; i < audioData.length; i++) {
+        energy += Math.abs(audioData[i] - audioData[i - period]);
+      }
+      return 1 / (energy / audioData.length + 0.001); // Lower diff means higher periodicity
+    };
+
+    const minorThirdEnergy = calculateEnergyAt(minorThirdFreq);
+    const majorThirdEnergy = calculateEnergyAt(majorThirdFreq);
+    const minorSeventhEnergy = calculateEnergyAt(minorSeventhFreq);
+
+    return {
+      isMinor: minorThirdEnergy > majorThirdEnergy,
+      isSeventh: minorSeventhEnergy > (minorThirdEnergy + majorThirdEnergy) / 2
+    };
   }
 
   // Generate tablature from chords
@@ -721,23 +764,38 @@ class AudioProcessingService {
     return tablature;
   }
 
-  // Get finger positions for common chords
+  // Get finger positions for common chords with expanded library
   getChordPositions(chordName) {
     const chordShapes = {
+      // Major
       'C': [{ string: 1, fret: 0 }, { string: 2, fret: 1 }, { string: 3, fret: 0 }, { string: 4, fret: 2 }, { string: 5, fret: 3 }],
       'G': [{ string: 0, fret: 3 }, { string: 1, fret: 0 }, { string: 2, fret: 0 }, { string: 3, fret: 0 }, { string: 4, fret: 2 }, { string: 5, fret: 3 }],
       'D': [{ string: 0, fret: 2 }, { string: 1, fret: 3 }, { string: 2, fret: 2 }, { string: 3, fret: 0 }],
       'A': [{ string: 1, fret: 0 }, { string: 2, fret: 2 }, { string: 3, fret: 2 }, { string: 4, fret: 2 }],
       'E': [{ string: 0, fret: 0 }, { string: 1, fret: 0 }, { string: 2, fret: 1 }, { string: 3, fret: 2 }, { string: 4, fret: 2 }, { string: 5, fret: 0 }],
-      'Am': [{ string: 0, fret: 0 }, { string: 1, fret: 1 }, { string: 2, fret: 2 }, { string: 3, fret: 2 }, { string: 4, fret: 0 }],
-      'Em': [{ string: 0, fret: 0 }, { string: 1, fret: 0 }, { string: 2, fret: 0 }, { string: 3, fret: 2 }, { string: 4, fret: 2 }, { string: 5, fret: 0 }],
-      'Dm': [{ string: 0, fret: 1 }, { string: 1, fret: 3 }, { string: 2, fret: 2 }, { string: 3, fret: 0 }],
       'F': [{ string: 0, fret: 1 }, { string: 1, fret: 1 }, { string: 2, fret: 2 }, { string: 3, fret: 3 }, { string: 4, fret: 3 }, { string: 5, fret: 1 }],
       'B': [{ string: 0, fret: 2 }, { string: 1, fret: 4 }, { string: 2, fret: 4 }, { string: 3, fret: 4 }, { string: 4, fret: 2 }],
-      'Bm': [{ string: 0, fret: 2 }, { string: 1, fret: 3 }, { string: 2, fret: 4 }, { string: 3, fret: 4 }, { string: 4, fret: 2 }]
+
+      // Minor
+      'Cm': [{ string: 0, fret: 3 }, { string: 1, fret: 4 }, { string: 2, fret: 5 }, { string: 3, fret: 5 }, { string: 4, fret: 3 }],
+      'Gm': [{ string: 0, fret: 3 }, { string: 1, fret: 3 }, { string: 2, fret: 3 }, { string: 3, fret: 5 }, { string: 4, fret: 5 }, { string: 5, fret: 3 }],
+      'Dm': [{ string: 0, fret: 1 }, { string: 1, fret: 3 }, { string: 2, fret: 2 }, { string: 3, fret: 0 }],
+      'Am': [{ string: 0, fret: 0 }, { string: 1, fret: 1 }, { string: 2, fret: 2 }, { string: 3, fret: 2 }, { string: 4, fret: 0 }],
+      'Em': [{ string: 0, fret: 0 }, { string: 1, fret: 0 }, { string: 2, fret: 0 }, { string: 3, fret: 2 }, { string: 4, fret: 2 }, { string: 5, fret: 0 }],
+      'Fm': [{ string: 0, fret: 1 }, { string: 1, fret: 1 }, { string: 2, fret: 1 }, { string: 3, fret: 3 }, { string: 4, fret: 3 }, { string: 5, fret: 1 }],
+      'Bm': [{ string: 0, fret: 2 }, { string: 1, fret: 3 }, { string: 2, fret: 4 }, { string: 3, fret: 4 }, { string: 4, fret: 2 }],
+
+      // 7th
+      'C7': [{ string: 1, fret: 0 }, { string: 2, fret: 1 }, { string: 3, fret: 3 }, { string: 4, fret: 2 }, { string: 5, fret: 3 }],
+      'G7': [{ string: 0, fret: 1 }, { string: 1, fret: 0 }, { string: 2, fret: 0 }, { string: 3, fret: 0 }, { string: 4, fret: 2 }, { string: 5, fret: 3 }],
+      'D7': [{ string: 0, fret: 2 }, { string: 1, fret: 1 }, { string: 2, fret: 2 }, { string: 3, fret: 0 }],
+      'A7': [{ string: 1, fret: 0 }, { string: 2, fret: 2 }, { string: 3, fret: 0 }, { string: 4, fret: 2 }],
+      'E7': [{ string: 0, fret: 0 }, { string: 1, fret: 0 }, { string: 2, fret: 1 }, { string: 3, fret: 0 }, { string: 4, fret: 2 }, { string: 5, fret: 0 }]
     };
 
-    return chordShapes[chordName] || [];
+    // Handle sharps/flats (simplified)
+    const baseChord = chordName.replace('#', '').replace('b', '');
+    return chordShapes[chordName] || chordShapes[baseChord] || [];
   }
 
   // Cleanup temporary files

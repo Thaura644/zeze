@@ -2,8 +2,30 @@ import React from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, StatusBar } from 'react-native';
 import { COLORS, SPACING, TYPOGRAPHY } from '@/constants/theme';
 import GuitarLogo from '@/components/GuitarLogo';
+import { useRoute, RouteProp } from '@react-navigation/native';
 
-const LoadingScreen: React.FC = () => {
+type LoadingScreenRouteProp = RouteProp<{
+  Loading: {
+    progress?: number;
+    message?: string;
+    subtitle?: string;
+  };
+}, 'Loading'>;
+
+interface LoadingScreenProps {
+  progress?: number;
+  message?: string;
+  subtitle?: string;
+}
+
+const LoadingScreen: React.FC<LoadingScreenProps> = (props) => {
+  const route = useRoute<LoadingScreenRouteProp>();
+
+  // Use props if provided directly, otherwise use route params
+  const progress = props.progress ?? route.params?.progress ?? 0;
+  const message = props.message ?? route.params?.message ?? "AI Analysis in progress...";
+  const subtitle = props.subtitle ?? route.params?.subtitle ?? "Detecting chords and techniques...";
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -17,10 +39,10 @@ const LoadingScreen: React.FC = () => {
       <View style={styles.loaderContainer}>
         <View style={styles.circularProgressContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} style={styles.spinner} />
-          <Text style={styles.progressPercent}>75%</Text>
+          <Text style={styles.progressPercent}>{Math.round(progress)}%</Text>
         </View>
-        <Text style={styles.analysisTitle}>AI Analysis in progress...</Text>
-        <Text style={styles.analysisSubtitle}>Detecting chords and techniques...</Text>
+        <Text style={styles.analysisTitle}>{message}</Text>
+        <Text style={styles.analysisSubtitle}>{subtitle}</Text>
       </View>
     </View>
   );
