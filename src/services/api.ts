@@ -689,6 +689,62 @@ class ApiService {
       };
     }
   }
+
+  // Notification endpoints
+  async registerPushToken(pushToken: string, deviceInfo?: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.api.post('/notifications/register', {
+        pushToken,
+        deviceInfo
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('Register push token error:', error);
+      throw error;
+    }
+  }
+
+  async unregisterPushToken(pushToken: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.api.post('/notifications/unregister', {
+        pushToken
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('Unregister push token error:', error);
+      throw error;
+    }
+  }
+
+  async getNotificationPreferences(): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.api.get('/notifications/preferences');
+      return response.data;
+    } catch (error: any) {
+      console.error('Get notification preferences error:', error);
+      throw error;
+    }
+  }
+
+  async updateNotificationPreferences(preferences: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.api.put('/notifications/preferences', preferences);
+      return response.data;
+    } catch (error: any) {
+      console.error('Update notification preferences error:', error);
+      throw error;
+    }
+  }
+
+  async sendTestNotification(): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.api.post('/notifications/test');
+      return response.data;
+    } catch (error: any) {
+      console.error('Send test notification error:', error);
+      throw error;
+    }
+  }
 }
 
 const apiService = new ApiService();

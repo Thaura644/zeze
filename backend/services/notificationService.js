@@ -18,13 +18,12 @@ class NotificationService {
    */
   initializeExpo() {
     try {
-      // For production, install: npm install expo-server-sdk
-      // const { Expo } = require('expo-server-sdk');
-      // this.expo = new Expo();
+      const { Expo } = require('expo-server-sdk');
+      this.expo = new Expo();
 
-      logger.info('Expo Push Notification service initialized (mock mode)');
+      logger.info('Expo Push Notification service initialized');
     } catch (error) {
-      logger.warn('Expo SDK not installed, running in mock mode', { error: error.message });
+      logger.warn('Failed to initialize Expo SDK, running in mock mode', { error: error.message });
     }
   }
 

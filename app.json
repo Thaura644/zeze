@@ -27,7 +27,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "./plugins/codepush.js"
+      "./plugins/codepush.js",
+      "expo-notifications"
     ]
   }
 }
