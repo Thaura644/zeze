@@ -2,10 +2,23 @@ require('dotenv').config();
 
 // Polyfill for Node.js environments where File/Blob are not global (e.g. Node < 20)
 // This is required by newer versions of undici used by dependencies
-if (typeof global.File === 'undefined' || typeof global.Blob === 'undefined') {
-  const { File, Blob } = require('node:buffer');
-  if (typeof global.File === 'undefined') global.File = File;
-  if (typeof global.Blob === 'undefined') global.Blob = Blob;
+if (typeof global.Blob === 'undefined') {
+  global.Blob = require('node:buffer').Blob;
+}
+if (typeof global.File === 'undefined') {
+  const { Blob } = require('node:buffer');
+  // Simple File polyfill for Node 18
+  class File extends Blob {
+    constructor(parts, filename, options = {}) {
+      super(parts, options);
+      this.name = filename;
+      this.lastModified = options.lastModified || Date.now();
+    }
+    get [Symbol.toStringTag]() {
+      return 'File';
+    }
+  }
+  global.File = File;
 }
 
 const express = require('express');
