@@ -1,5 +1,5 @@
 # Use official Node.js runtime as base image (Debian-based for glibc compatibility)
-FROM node:18-slim
+FROM node:20-slim
 
 # Set working directory
 WORKDIR /app
