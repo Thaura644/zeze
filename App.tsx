@@ -68,10 +68,18 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
         throw new Error(response.message || 'Login failed');
       }
     } catch (error: any) {
+      let errorMessage = 'Invalid credentials';
+      if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
       Toast.show({
         type: 'error',
         text1: 'Login Failed',
-        text2: error.message || 'Invalid credentials',
+        text2: errorMessage,
       });
     } finally {
       setLoading(false);
@@ -108,10 +116,20 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
         throw new Error(response.message || 'Registration failed');
       }
     } catch (error: any) {
+      let errorMessage = 'Could not create account';
+      if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.response?.data?.errors) {
+        errorMessage = error.response.data.errors[0]?.msg || error.response.data.errors[0]?.message || JSON.stringify(error.response.data.errors);
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
       Toast.show({
         type: 'error',
         text1: 'Registration Failed',
-        text2: error.message || 'Could not create account',
+        text2: errorMessage,
       });
     } finally {
       setLoading(false);
@@ -343,10 +361,18 @@ const App: React.FC = () => {
         });
       }
     } catch (error: any) {
+      let errorMessage = 'Guest login failed';
+      if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
       Toast.show({
         type: 'error',
         text1: 'Guest Login Failed',
-        text2: error.message,
+        text2: errorMessage,
       });
     }
   };

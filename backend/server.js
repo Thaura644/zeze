@@ -45,6 +45,9 @@ const websocketManager = require('./websocket/websocketManager');
 const app = express();
 const server = http.createServer(app);
 
+// Trust proxy for rate limiting behind load balancers
+app.set('trust proxy', 1);
+
 // Configure middleware
 app.use(helmet({
   contentSecurityPolicy: {
