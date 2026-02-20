@@ -5,6 +5,7 @@ const auth = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../config/logger');
+const { query: dbQuery } = require('../config/database');
 
 // Generate a new guitar exercise
 router.post('/generate-exercise', auth.authenticate(), async (req, res) => {
@@ -38,6 +39,30 @@ router.post('/generate-exercise', auth.authenticate(), async (req, res) => {
   try {
     const exercise = await audioGenerationService.generateGuitarExercise(req.body);
     
+    // Persist to database
+    try {
+      await dbQuery(
+        `INSERT INTO exercises (exercise_id, user_id, type, skill_level, style, tempo, duration, key, audio_path, tablature, instructions, variations)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+        [
+          exercise.exerciseId,
+          req.user.id,
+          exercise.type,
+          exercise.skillLevel,
+          exercise.style,
+          exercise.tempo,
+          exercise.duration,
+          exercise.key,
+          exercise.audioPath,
+          JSON.stringify(exercise.tablature),
+          JSON.stringify(exercise.instructions),
+          JSON.stringify(exercise.variations)
+        ]
+      );
+    } catch (dbError) {
+      logger.error('Failed to persist generated exercise:', dbError);
+    }
+
     res.json({
       success: true,
       exercise: {
@@ -155,17 +180,28 @@ router.post('/generate-variation/:exerciseId', auth.authenticate(), async (req, 
 
 // Helper function to retrieve exercise by ID
 async function getExerciseById(exerciseId) {
-  // In a real implementation, this would query the database
-  // For now, we'll simulate by returning a mock exercise
-  return {
-    exerciseId: exerciseId,
-    skillLevel: 'intermediate',
-    style: 'rock',
-    tempo: 120,
-    duration: 30,
-    key: 'C',
-    exerciseType: 'melody'
-  };
+  try {
+    const result = await dbQuery('SELECT * FROM exercises WHERE exercise_id = $1', [exerciseId]);
+    if (result.rows.length > 0) {
+      const row = result.rows[0];
+      return {
+        exerciseId: row.exercise_id,
+        skillLevel: row.skill_level,
+        style: row.style,
+        tempo: row.tempo,
+        duration: row.duration,
+        key: row.key,
+        exerciseType: row.type,
+        tablature: row.tablature,
+        instructions: row.instructions,
+        variations: row.variations
+      };
+    }
+    return null;
+  } catch (error) {
+    logger.error('Error fetching exercise by ID:', error);
+    return null;
+  }
 }
 
 // Helper function to generate exercise variations algorithmically
@@ -386,6 +422,30 @@ router.post('/load/:exerciseId', auth.authenticate(), async (req, res) => {
     
     const exercise = await audioGenerationService.generateGuitarExercise(exerciseConfig);
     
+    // Persist to database
+    try {
+      await dbQuery(
+        `INSERT INTO exercises (exercise_id, user_id, type, skill_level, style, tempo, duration, key, audio_path, tablature, instructions, variations)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+        [
+          exercise.exerciseId,
+          req.user.id,
+          exercise.type,
+          exercise.skillLevel,
+          exercise.style,
+          exercise.tempo,
+          exercise.duration,
+          exercise.key,
+          exercise.audioPath,
+          JSON.stringify(exercise.tablature),
+          JSON.stringify(exercise.instructions),
+          JSON.stringify(exercise.variations)
+        ]
+      );
+    } catch (dbError) {
+      logger.error('Failed to persist loaded exercise:', dbError);
+    }
+
     res.json({
       success: true,
       exercise: {

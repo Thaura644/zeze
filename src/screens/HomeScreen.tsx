@@ -19,6 +19,7 @@ import Toast from 'react-native-toast-message';
 import * as DocumentPicker from 'expo-document-picker';
 import { RootState, AppDispatch } from '@/store';
 import { processYouTubeUrl, processAudioFile, clearError, fetchPopularSongs, fetchRecommendedSongs } from '@/store/slices/songsSlice';
+import { loadSong } from '@/store/slices/playerSlice';
 import { Song } from '@/types/music';
 import ApiService from '@/services/api';
 import { isFeatureEnabled, SubscriptionTier } from '@/constants/plans';
@@ -208,7 +209,7 @@ const HomeScreen: React.FC = () => {
           // For now, audio playback is not available for processed songs
           audioUrl: '',
         };
-        dispatch({ type: 'player/loadSong', payload: newSong });
+        dispatch(loadSong(newSong));
         navigation.navigate('Player');
       }
     } else {
@@ -222,7 +223,7 @@ const HomeScreen: React.FC = () => {
   };
 
   const handleSongPress = (song: Song) => {
-    dispatch({ type: 'player/loadSong', payload: song });
+    dispatch(loadSong(song));
     navigation.navigate('Player');
   };
 
